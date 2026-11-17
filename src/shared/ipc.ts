@@ -1,4 +1,5 @@
 /** IPC contract shared by main, preload and renderer. */
+import type { Listing, TransferEvent } from './files'
 import type { Group, GroupInput, Host, HostInput, Identity, IdentityInput, Integration, IntegrationInput, KeyImportResult, PasswordChange, SshKey, SyncResult, VaultSnapshot } from './vault'
 
 export interface ConnectRequest {
@@ -75,7 +76,26 @@ export const IPC = {
   identityDelete: 'identity:delete',
   integrationSave: 'integration:save',
   integrationDelete: 'integration:delete',
-  integrationSync: 'integration:sync'
+  integrationSync: 'integration:sync',
+  sftpOpen: 'sftp:open',
+  sftpClose: 'sftp:close',
+  sftpList: 'sftp:list',
+  sftpMkdir: 'sftp:mkdir',
+  sftpRename: 'sftp:rename',
+  sftpChmod: 'sftp:chmod',
+  sftpRemove: 'sftp:remove',
+  sftpUpload: 'sftp:upload',
+  sftpDownload: 'sftp:download',
+  sftpCancel: 'sftp:cancel',
+  sftpTransfer: 'sftp:transfer',
+  sftpClosed: 'sftp:closed',
+  localHome: 'local:home',
+  localRoots: 'local:roots',
+  localList: 'local:list',
+  localMkdir: 'local:mkdir',
+  localRename: 'local:rename',
+  localTrash: 'local:trash',
+  localOpen: 'local:open'
 } as const
 
 export interface AppInfo {
@@ -122,6 +142,33 @@ export interface VpsApi {
   identities: {
     save(input: IdentityInput, password: PasswordChange): Promise<Identity>
     delete(id: string): Promise<void>
+  }
+  sftp: {
+    open(hostId: string, o?: { password?: string; passphrase?: string; rememberPassphrase?: boolean }): Promise<{ id: string; home: string }>
+    close(id: string): void
+    list(id: string, path: string): Promise<Listing>
+    mkdir(id: string, path: string): Promise<void>
+    rename(id: string, from: string, to: string): Promise<void>
+    chmod(id: string, path: string, mode: number): Promise<void>
+    remove(id: string, path: string): Promise<void>
+    upload(id: string, localPaths: string[], remoteDir: string): Promise<string>
+    download(id: string, remotePaths: string[], localDir: string): Promise<string>
+    cancel(transferId: string): void
+    onTransfer(cb: (ev: TransferEvent) => void): () => void
+    onClosed(cb: (id: string) => void): () => void
+  }
+  local: {
+    home(): Promise<string>
+    roots(): Promise<string[]>
+    list(path: string): Promise<Listing>
+    mkdir(path: string): Promise<void>
+    rename(from: string, to: string): Promise<void>
+    /** Moves to the OS recycle bin. */
+    trash(path: string): Promise<void>
+    /** Opens with the default app. */
+    open(path: string): Promise<void>
+    /** Absolute path of a file dropped from the OS (Electron webUtils). */
+    pathForFile(file: File): string
   }
   integrations: {
     save(input: IntegrationInput, secret?: string): Promise<Integration>

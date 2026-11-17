@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { askText } from '@/components/InputDialog'
 import type { SessionStatus } from '@shared/ipc'
 import { DEFAULT_TERM_FONT, DEFAULT_TERM_THEME, TERM_FONTS, termThemeById } from '@/lib/termThemes'
 
@@ -52,8 +53,15 @@ interface Prefs {
   navCollapsed: boolean
 }
 
+export interface SplitLayout {
+  id: string
+  dir: 'row' | 'col'
+  tabIds: string[]
+}
+
 interface State extends Prefs {
   tabs: Tab[]
+  layouts: SplitLayout[]
   activeId?: string
   view: View
   section: Section
@@ -63,6 +71,8 @@ interface State extends Prefs {
   focusSearchTick: number
 
   openTab(params: ConnectParams, password: string): void
+  /** Splits the active tab: a new session to the same host opens beside (row) or below (col). */
+  split(dir: 'row' | 'col'): Promise<void>
   openHostTab(
     host: { id: string; label: string; address: string; port: number; username: string; options?: { termTheme: string | null; backspace: string } },
     needsPassword: boolean,
@@ -113,6 +123,7 @@ function savePrefs(s: Prefs): void {
 export const useSessions = create<State>((set, get) => ({
   ...loadPrefs(),
   tabs: [],
+  layouts: [],
   activeId: undefined,
   view: 'vault',
   section: 'hosts',
@@ -149,15 +160,53 @@ export const useSessions = create<State>((set, get) => ({
     }
     set((s) => ({ tabs: [...s.tabs, tab], activeId: id, view: 'term' }))
   },
+  split: async (dir) => {
+    const src = get().tabs.find((t) => t.id === get().activeId)
+    if (!src) return
+    if (get().layouts.find((l) => l.tabIds.includes(src.id))?.tabIds.length === 4) return
+    // The first session's password is never kept, so a new pane has to ask for it.
+    let pendingPassword: string | undefined
+    if (src.needsPassword) {
+      const pw = await askText({ title: `Пароль для ${src.title}`, label: 'Новая панель открывает отдельную SSH-сессию.', password: true, okText: 'Открыть панель' })
+      if (pw === null) return
+      pendingPassword = pw
+    }
+    const s = get()
+    const layout = s.layouts.find((l) => l.tabIds.includes(src.id))
+    if (layout && layout.tabIds.length >= 4) return
+    const id = crypto.randomUUID()
+    const tab: Tab = {
+      id,
+      title: src.title,
+      params: src.params,
+      hostId: src.hostId,
+      needsPassword: src.needsPassword,
+      termTheme: src.termTheme,
+      backspaceCtrlH: src.backspaceCtrlH,
+      status: 'idle',
+      attempt: 1,
+      pendingPassword
+    }
+    const tabs = [...s.tabs]
+    tabs.splice(tabs.findIndex((t) => t.id === src.id) + 1, 0, tab)
+    const layouts = layout
+      ? s.layouts.map((l) => (l === layout ? { ...l, dir, tabIds: [...l.tabIds.slice(0, l.tabIds.indexOf(src.id) + 1), id, ...l.tabIds.slice(l.tabIds.indexOf(src.id) + 1)] } : l))
+      : [...s.layouts, { id: crypto.randomUUID(), dir, tabIds: [src.id, id] }]
+    set({ tabs, layouts, activeId: id, view: 'term' })
+  },
   closeTab: (id) => {
     const tab = get().tabs.find((t) => t.id === id)
     if (tab?.sessionId) window.api.ssh.disconnect(tab.sessionId)
     set((s) => {
       const idx = s.tabs.findIndex((t) => t.id === id)
       const tabs = s.tabs.filter((t) => t.id !== id)
-      if (s.activeId !== id) return { tabs }
-      const next = tabs[Math.min(idx, tabs.length - 1)]
-      return { tabs, activeId: next?.id, view: s.view === 'term' && !next ? 'vault' : s.view }
+      const oldLayout = s.layouts.find((l) => l.tabIds.includes(id))
+      const layouts = s.layouts.map((l) => ({ ...l, tabIds: l.tabIds.filter((t) => t !== id) })).filter((l) => l.tabIds.length > 1)
+      if (s.activeId !== id) return { tabs, layouts }
+      // Prefer a remaining pane of the same split, then the neighbouring tab.
+      const paneMate = oldLayout?.tabIds.find((t) => t !== id)
+      const next = paneMate ?? tabs[Math.min(idx, tabs.length - 1)]?.id
+      return { tabs, layouts, activeId: next, view: s.view === 'term' && !next ? 'vault' : s.view }
     })
   },
   activate: (id) => set({ activeId: id, view: 'term' }),

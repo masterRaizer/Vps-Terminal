@@ -3,6 +3,9 @@ import { useSessions } from '@/store/sessions'
 import { useVault } from '@/store/vault'
 import { PasswordPrompt } from './components/PasswordPrompt'
 import { PassphrasePrompt } from './components/PassphrasePrompt'
+import { InputDialog } from './components/InputDialog'
+import { ChmodDialog } from './components/files/ChmodDialog'
+import { HostPicker } from './components/files/HostPicker'
 import { TopBar } from './components/TopBar'
 import { NavSidebar } from './components/NavSidebar'
 import { TerminalView } from './components/TerminalView'
@@ -24,7 +27,19 @@ const PAGES = {
 }
 
 export function App() {
-  const { tabs, activeId, view, section, sidePanel } = useSessions()
+  const { tabs, activeId, view, section, sidePanel, layouts } = useSessions()
+  const activeLayout = layouts.find((l) => activeId && l.tabIds.includes(activeId))
+  const rectOf = (tabId: string): { left: string; top: string; width: string; height: string } | null => {
+    if (view !== 'term') return null
+    if (activeLayout?.tabIds.includes(tabId)) {
+      const n = activeLayout.tabIds.length
+      const i = activeLayout.tabIds.indexOf(tabId)
+      const size = `${100 / n}%`
+      const pos = `${(100 / n) * i}%`
+      return activeLayout.dir === 'row' ? { left: pos, top: '0', width: size, height: '100%' } : { left: '0', top: pos, width: '100%', height: size }
+    }
+    return tabId === activeId ? { left: '0', top: '0', width: '100%', height: '100%' } : null
+  }
   const Page = PAGES[section]
   useEffect(() => {
     void useVault.getState().load()
@@ -39,12 +54,14 @@ export function App() {
             <Page />
           </div>
         )}
-        {view === 'sftp' && <SftpPage />}
+        <div className="sftp-host" style={{ display: view === 'sftp' ? 'flex' : 'none' }}>
+          <SftpPage />
+        </div>
         {/* Terminals stay mounted while other views are shown. */}
         <div className="term-area" style={{ display: view === 'term' ? 'flex' : 'none' }}>
           <div className="term-stack">
             {tabs.map((t) => (
-              <TerminalView key={t.id} tab={t} active={view === 'term' && t.id === activeId} />
+              <TerminalView key={t.id} tab={t} active={view === 'term' && t.id === activeId} rect={rectOf(t.id)} inSplit={Boolean(activeLayout?.tabIds.includes(t.id))} />
             ))}
           </div>
           {sidePanel && <TermSidePanel />}
@@ -54,6 +71,9 @@ export function App() {
       <HostKeyDialog />
       <PasswordPrompt />
       <PassphrasePrompt />
+      <HostPicker />
+      <ChmodDialog />
+      <InputDialog />
     </div>
   )
 }

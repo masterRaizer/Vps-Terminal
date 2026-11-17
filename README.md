@@ -68,7 +68,7 @@ npm run typecheck
 
 1. ✅ Скелет Electron+React+Vite, безопасный preload, SSH-терминал по паролю
 2. ✅ Менеджер хостов (группы, теги, цвет, избранное, поиск, импорт hosts.json) + SQLite + keytar
-3. 🔄 Ключи ✅, профили доступа ✅, Remnawave ✅, флаги стран ✅, SFTP и сплиты — в работе
+3. ✅ Ключи, профили доступа, Remnawave, флаги стран, SFTP, сплиты
 4. Сниппеты, туннели, known_hosts (TOFU)
 5. Шифрованный vault + сервер синхронизации на VPS
 6. electron-builder + GitHub Actions → .exe

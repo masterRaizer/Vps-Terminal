@@ -15,11 +15,14 @@ import { IconLock, IconRefresh } from './Icons'
 interface Props {
   tab: Tab
   active: boolean
+  /** Position inside the terminal area; null hides the pane (it stays mounted). */
+  rect: { left: string; top: string; width: string; height: string } | null
+  inSplit: boolean
 }
 
 const themeOf = (id: string) => (termThemeById(id) ?? termThemeById(DEFAULT_TERM_THEME)!).theme
 
-export function TerminalView({ tab, active }: Props) {
+export function TerminalView({ tab, active, rect, inSplit }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
@@ -74,6 +77,14 @@ export function TerminalView({ tab, active }: Props) {
       }
       if (k === 'v') {
         void navigator.clipboard.readText().then((t) => term.paste(t))
+        return false
+      }
+      if (k === 'd' || k === 'e') {
+        void useSessions.getState().split(k === 'd' ? 'row' : 'col')
+        return false
+      }
+      if (k === 'w') {
+        useSessions.getState().closeTab(tab.id)
         return false
       }
       if (k === 'f') {
@@ -195,6 +206,11 @@ export function TerminalView({ tab, active }: Props) {
     if (active && tab.status === 'ready') termRef.current?.focus()
   }, [active, tab.status])
 
+  const rectKey = rect ? `${rect.left}|${rect.top}|${rect.width}|${rect.height}` : ''
+  useEffect(() => {
+    if (rectKey) requestAnimationFrame(() => fitRef.current?.fit())
+  }, [rectKey])
+
   useEffect(() => {
     if (active) {
       requestAnimationFrame(() => {
@@ -208,7 +224,17 @@ export function TerminalView({ tab, active }: Props) {
   const bg = themeOf(themeId).background
 
   return (
-    <div className="term-pane" style={{ display: active ? 'flex' : 'none', background: bg }}>
+    <div
+      className={`term-pane ${inSplit ? 'in-split' : ''} ${inSplit && active ? 'focused' : ''}`}
+      style={rect ? { display: 'flex', background: bg, ...rect } : { display: 'none' }}
+      onMouseDownCapture={() => !active && useSessions.getState().activate(tab.id)}
+    >
+      {inSplit && (
+        <div className="pane-head">
+          <span className={`dot dot-${tab.status}`} />
+          {tab.title}
+        </div>
+      )}
       <div className="term-host" ref={hostRef} />
       {disconnected && <ReconnectBar tab={tab} />}
     </div>

@@ -15,6 +15,8 @@ import { DataKeyCipher } from './key-crypto'
 import { KeyService } from './key-service'
 import { GeoIp } from './geoip'
 import { RemnawaveSync } from './remnawave'
+import { SftpManager } from './sftp-manager'
+import { localHome, localList, localMkdir, localPath, localRename, localRoots } from './local-fs'
 
 const APP_NAME = 'Vps Terminal SSH'
 let mainWindow: BrowserWindow | null = null
@@ -29,18 +31,34 @@ const str = (v: unknown, name: string, max = 512): string => {
 }
 const pendingHostKeys = new Map<string, (accept: boolean) => void>()
 
+// Fingerprints the user trusted during this run (persistent known_hosts arrive in step 4).
+const trustedThisRun = new Map<string, string>()
+
+const askHostKey = (info: Omit<HostKeyPrompt, 'requestId'>): Promise<boolean> =>
+  new Promise<boolean>((resolve) => {
+    const id = `${info.host}:${info.port}`
+    if (trustedThisRun.get(id) === info.fingerprint) return resolve(true)
+    if (!mainWindow) return resolve(false)
+    const requestId = crypto.randomUUID()
+    pendingHostKeys.set(requestId, (ok) => {
+      if (ok) trustedThisRun.set(id, info.fingerprint)
+      resolve(ok)
+    })
+    const prompt: HostKeyPrompt = { requestId, ...info }
+    mainWindow.webContents.send(IPC.hostKeyPrompt, prompt)
+  })
+
 const ssh = new SshManager({
   onData: (sessionId, data) => mainWindow?.webContents.send(IPC.sshData, sessionId, data),
   onStatus: (ev) => mainWindow?.webContents.send(IPC.sshStatus, ev),
-  verifyHostKey: (info) =>
-    new Promise<boolean>((resolve) => {
-      if (!mainWindow) return resolve(false)
-      const requestId = crypto.randomUUID()
-      pendingHostKeys.set(requestId, resolve)
-      const prompt: HostKeyPrompt = { requestId, ...info }
-      mainWindow.webContents.send(IPC.hostKeyPrompt, prompt)
-    })
+  verifyHostKey: askHostKey
 })
+
+const sftp = new SftpManager(
+  askHostKey,
+  (ev) => mainWindow?.webContents.send(IPC.sftpTransfer, ev),
+  (id) => mainWindow?.webContents.send(IPC.sftpClosed, id)
+)
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -121,6 +139,46 @@ function registerIpc(): void {
       env: c.host.options.env,
       ...validateGeometry(r)
     })
+  })
+
+  ipcMain.handle(IPC.sftpOpen, async (_e, hostId: unknown, raw: unknown) => {
+    const o = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>
+    const c = await vault.resolveForConnect(str(hostId, 'id', 64), {
+      password: typeof o.password === 'string' ? o.password : undefined,
+      passphrase: typeof o.passphrase === 'string' ? o.passphrase : undefined,
+      rememberPassphrase: o.rememberPassphrase === true
+    })
+    return sftp.open({ host: c.host.address, port: c.host.port, username: c.username, password: c.password ?? undefined, privateKey: c.privateKey, passphrase: c.passphrase, agent: c.agent })
+  })
+  ipcMain.on(IPC.sftpClose, (_e, id: unknown) => typeof id === 'string' && sftp.close(id))
+  ipcMain.handle(IPC.sftpList, (_e, id: unknown, path: unknown) => sftp.list(str(id, 'id', 64), path))
+  ipcMain.handle(IPC.sftpMkdir, (_e, id: unknown, path: unknown) => sftp.mkdir(str(id, 'id', 64), path))
+  ipcMain.handle(IPC.sftpRename, (_e, id: unknown, a: unknown, b: unknown) => sftp.rename(str(id, 'id', 64), a, b))
+  ipcMain.handle(IPC.sftpChmod, (_e, id: unknown, path: unknown, mode: unknown) => sftp.chmod(str(id, 'id', 64), path, mode))
+  ipcMain.handle(IPC.sftpRemove, (_e, id: unknown, path: unknown) => sftp.remove(str(id, 'id', 64), path))
+  ipcMain.handle(IPC.sftpUpload, (_e, id: unknown, locals: unknown, dir: unknown) => {
+    if (!Array.isArray(locals) || locals.length > 1000) throw new Error('Неверный список файлов')
+    return sftp.upload(str(id, 'id', 64), locals.map(localPath), dir)
+  })
+  ipcMain.handle(IPC.sftpDownload, (_e, id: unknown, remotes: unknown, dir: unknown) => {
+    if (!Array.isArray(remotes) || remotes.length > 1000) throw new Error('Неверный список файлов')
+    return sftp.download(str(id, 'id', 64), remotes, localPath(dir))
+  })
+  ipcMain.on(IPC.sftpCancel, (_e, tid: unknown) => typeof tid === 'string' && sftp.cancel(tid))
+  ipcMain.handle(IPC.localHome, () => localHome())
+  ipcMain.handle(IPC.localRoots, () => localRoots())
+  ipcMain.handle(IPC.localList, (_e, path: unknown) => localList(path))
+  ipcMain.handle(IPC.localMkdir, (_e, path: unknown) => localMkdir(path))
+  ipcMain.handle(IPC.localRename, (_e, a: unknown, b: unknown) => localRename(a, b))
+  ipcMain.handle(IPC.localTrash, (_e, path: unknown) => shell.trashItem(localPath(path)))
+  ipcMain.handle(IPC.localOpen, async (_e, path: unknown) => {
+    const target = localPath(path)
+    // Opening is for documents; never launch programs or scripts from the file manager.
+    if (/\.(exe|com|bat|cmd|ps1|psm1|vbs|vbe|js|jse|wsf|wsh|msi|msp|scr|lnk|hta|cpl|reg|jar|appref-ms)$/i.test(target)) {
+      throw new Error('Исполняемые файлы из файлового менеджера не запускаются')
+    }
+    const err = await shell.openPath(target)
+    if (err) throw new Error(err)
   })
 
   ipcMain.handle(IPC.vaultSnapshot, () => vault.snapshot())
@@ -264,5 +322,6 @@ if (!app.requestSingleInstanceLock()) {
 
 app.on('window-all-closed', () => {
   ssh.disconnectAll()
+  sftp.closeAll()
   if (process.platform !== 'darwin') app.quit()
 })

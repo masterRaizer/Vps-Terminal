@@ -1,6 +1,8 @@
 import type { JSX } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import { useSessions, type SideTab } from '@/store/sessions'
+import { useVault } from '@/store/vault'
+import { useSftp } from '@/store/sftp'
 import { termRegistry } from '@/lib/termRegistry'
 import { TERM_FONTS, TERM_THEMES, type TermTheme } from '@/lib/termThemes'
 import { EmptyState } from './ui'
@@ -50,6 +52,7 @@ export function TermSidePanel() {
 
 function QuickPanel() {
   const activeId = useSessions((s) => s.activeId)
+  const hostId = useSessions((s) => s.tabs.find((t) => t.id === s.activeId)?.hostId)
   const [q, setQ] = useState('')
   const [miss, setMiss] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -97,6 +100,27 @@ function QuickPanel() {
       </div>
       <h3 className="sp-heading">Действия</h3>
       <div className="sp-actions">
+        <div className="sp-split">
+          <button className="sp-action" onClick={() => void useSessions.getState().split('row')} title="Ctrl+Shift+D">
+            Разделить вправо <kbd>Ctrl Shift D</kbd>
+          </button>
+          <button className="sp-action" onClick={() => void useSessions.getState().split('col')} title="Ctrl+Shift+E">
+            Разделить вниз <kbd>Ctrl Shift E</kbd>
+          </button>
+        </div>
+        {hostId && (
+          <button
+            className="sp-action"
+            onClick={() => {
+              const h = useVault.getState().hosts.find((x) => x.id === hostId)
+              if (!h) return
+              useSessions.getState().showSftp()
+              void useSftp.getState().connect(h)
+            }}
+          >
+            Открыть файлы (SFTP)
+          </button>
+        )}
         <button
           className="sp-action"
           onClick={() => {

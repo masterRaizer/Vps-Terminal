@@ -48,6 +48,7 @@ export function TopBar() {
                 <IconClose size={15} />
               </button>
               <span className="tt-title">{t.title}</span>
+              {s.layouts.some((l) => l.tabIds.includes(t.id)) && <span className="tt-split" title="В разделённом виде" />}
               <IconTerminal size={17} className="tt-icon" />
             </div>
           )

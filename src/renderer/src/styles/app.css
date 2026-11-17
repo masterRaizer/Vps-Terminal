@@ -563,3 +563,71 @@ textarea.notes::placeholder { color: var(--faint); }
 .badge-soft { font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 6px; background: #1d8cf826; color: #8cc4ff; }
 .popover > button img.flag { box-shadow: none; }
 .field-pair > * { min-width: 0; }
+
+/* ---------- SFTP ---------- */
+.sftp-host { flex: 1; min-width: 0; min-height: 0; }
+.sftp-wrap { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.sftp { flex: 1; min-height: 0; }
+.fpane { min-height: 0; position: relative; }
+.fpane.drop-over::after { content: ''; position: absolute; inset: 6px; border: 2px dashed var(--blue); border-radius: 12px; background: #1d8cf814; pointer-events: none; }
+.pane-filter { display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 12px; border-radius: 9px; background: var(--input); color: var(--muted); }
+.pane-filter input { width: 140px; border: 0; outline: 0; background: none; color: var(--text); user-select: text; }
+.crumbs { height: 60px; gap: 4px; }
+.crumb-list { flex: 1; display: flex; align-items: center; gap: 2px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.crumb-item { display: inline-flex; align-items: center; gap: 2px; flex: none; }
+.crumb-item button { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 8px; border: 0; border-radius: 7px; background: none; font-weight: 600; font-size: 15px; color: var(--muted); }
+.crumb-item button.cur { color: var(--text); }
+.crumb-item button:hover { background: #ffffff0d; color: var(--text); }
+.drive { height: 32px; padding: 0 6px; border: 0; border-radius: 7px; background: var(--input); color: var(--text); font-weight: 700; }
+.spin-svg { animation: spin 0.9s linear infinite; }
+.ftable-head { display: grid; grid-template-columns: minmax(0, 2.2fr) 1.3fr 0.8fr 0.9fr; height: 46px; padding: 0 14px; }
+.ftable-head span + span, .ftable-head .th + .th { border-left: 1px solid var(--line); }
+.th { display: flex; align-items: center; gap: 6px; height: 100%; padding: 0 12px; border: 0; background: none; font-weight: 700; color: var(--muted); text-align: left; }
+.th.on { color: var(--text); }
+.ftable-body { flex: 1; overflow-y: auto; outline: 0; padding: 4px 0 8px; }
+.frow { display: grid; grid-template-columns: minmax(0, 2.2fr) 1.3fr 0.8fr 0.9fr; align-items: center; height: 44px; padding: 0 14px; cursor: default; }
+.frow:hover { background: #ffffff07; }
+.frow.sel { background: var(--active); }
+.fname { display: flex; align-items: center; gap: 12px; min-width: 0; padding: 0 12px; font-weight: 600; }
+.fname-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fcell { padding: 0 12px; color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mono-sm { font: 12px var(--mono); }
+.ficon { width: 18px; height: 22px; margin: 0 2px; border-radius: 3px; background: linear-gradient(135deg, #8b93a8 0 70%, #6b7287 70%); flex: none; }
+.ficon.link { background: linear-gradient(135deg, #3fd496 0 70%, #24966b 70%); }
+.ftable-empty.err { color: var(--red); }
+.popover.ctx { position: fixed; right: auto; top: 0; min-width: 220px; }
+.sftp-notice { margin: 8px 12px 0; }
+.transfers { flex: none; max-height: 220px; overflow-y: auto; border-top: 1px solid var(--line); background: var(--toolbar); padding: 6px 14px 10px; }
+.tr-head { display: flex; align-items: center; height: 32px; font-weight: 700; color: var(--muted); }
+.tr-row { display: grid; grid-template-columns: 20px minmax(0, 1.5fr) 1fr 180px 28px; align-items: center; gap: 12px; height: 34px; }
+.tr-dir { color: var(--blue); font-weight: 700; text-align: center; }
+.tr-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.tr-bar { height: 6px; border-radius: 3px; background: var(--page); overflow: hidden; }
+.tr-bar span { display: block; height: 100%; background: var(--blue); transition: width 0.15s; }
+.st-done .tr-bar span { background: var(--green); }
+.st-error .tr-bar span, .st-cancelled .tr-bar span { background: var(--red); }
+.tr-info { color: var(--muted); font-size: 12px; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-error .tr-info { color: var(--red); }
+.modal.small { width: min(420px, calc(100vw - 32px)); }
+.modal.small h2 { margin-top: 0; }
+.picker-modal { width: min(560px, calc(100vw - 32px)); }
+.picker-modal h2 { margin-top: 0; }
+.picker-list { display: flex; flex-direction: column; gap: 8px; max-height: 50vh; overflow-y: auto; }
+.picker-list .card { min-height: 64px; }
+.perm-grid { display: grid; grid-template-columns: auto repeat(3, 1fr); gap: 10px 14px; align-items: center; margin-bottom: 16px; }
+.perm-h { font-size: 12px; color: var(--muted); text-align: center; }
+.perm-who { font-weight: 600; }
+.perm-cell { display: flex; justify-content: center; }
+.perm-cell input { width: 18px; height: 18px; accent-color: var(--blue); }
+
+/* ---------- Split panes ---------- */
+.term-pane.in-split { border: 1px solid #ffffff12; }
+.term-pane.in-split.focused { border-color: #3fd49666; z-index: 1; }
+.pane-head { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 12px; font-size: 12px; color: var(--muted); background: #00000026; flex: none; }
+.term-pane.focused .pane-head { color: var(--text); }
+.sp-split { display: grid; grid-template-columns: 1fr; gap: 6px; }
+.tt-split { width: 8px; height: 8px; border: 1.5px solid currentColor; border-radius: 2px; opacity: 0.6; flex: none; }
+
+/* overflow: clip never creates a scroll container, so focusing xterm's hidden textarea
+   cannot scroll the layout (overflow: hidden can still be scrolled programmatically). */
+.content, .term-area, .term-stack, .term-pane, .term-host { overflow: clip; }
