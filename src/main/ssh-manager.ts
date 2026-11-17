@@ -18,6 +18,11 @@ export interface SshManagerEvents {
   verifyHostKey(info: HostKeyInfo): Promise<boolean>
 }
 
+/** Windows OpenSSH agent pipe, or the Unix agent socket. */
+export function defaultAgent(): string | undefined {
+  return process.platform === 'win32' ? '\\\\.\\pipe\\openssh-ssh-agent' : process.env['SSH_AUTH_SOCK']
+}
+
 interface Session {
   client: Client
   stream?: ClientChannel
@@ -75,6 +80,7 @@ export class SshManager {
         port: req.port,
         username: req.username,
         password: req.password,
+        agent: req.agent ? defaultAgent() : undefined,
         tryKeyboard: Boolean(req.password),
         readyTimeout: 20000,
         keepaliveInterval: 15000,

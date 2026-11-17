@@ -8,6 +8,7 @@ import { attachData, claimStatus } from '@/lib/sessionBus'
 import { termRegistry } from '@/lib/termRegistry'
 import { DEFAULT_TERM_THEME, termThemeById } from '@/lib/termThemes'
 import { FOCUS_TERM_SEARCH } from './TermSidePanel'
+import { errorText } from '@/lib/errors'
 import { IconLock, IconRefresh } from './Icons'
 
 interface Props {
@@ -124,8 +125,10 @@ export function TerminalView({ tab, active }: Props) {
     term.writeln(`\x1b[2mПодключение к ${target}…\x1b[0m`)
     patchTab(tab.id, { status: 'connecting', message: undefined })
 
-    window.api.ssh
-      .connect({ ...tab.params, password, cols: term.cols, rows: term.rows })
+    const started = tab.hostId
+      ? window.api.ssh.connectHost({ hostId: tab.hostId, password, cols: term.cols, rows: term.rows })
+      : window.api.ssh.connect({ ...tab.params, password, cols: term.cols, rows: term.rows })
+    started
       .then((sessionId) => {
         if (cancelled) {
           window.api.ssh.disconnect(sessionId)
@@ -137,9 +140,10 @@ export function TerminalView({ tab, active }: Props) {
         patchTab(tab.id, { sessionId, ...(early ? { status: early.status, message: early.message } : {}) })
         if (early) log({ target, status: early.status, message: early.message })
       })
-      .catch((e: Error) => {
-        patchTab(tab.id, { status: 'error', message: e.message })
-        log({ target, status: 'error', message: e.message })
+      .catch((e: unknown) => {
+        const message = errorText(e)
+        patchTab(tab.id, { status: 'error', message })
+        log({ target, status: 'error', message })
       })
 
     return () => {
@@ -200,7 +204,7 @@ function ReconnectBar({ tab }: { tab: Tab }) {
       className="reconnect-bar"
       onSubmit={(e) => {
         e.preventDefault()
-        reconnect(tab.id, password)
+        reconnect(tab.id, tab.needsPassword ? password : undefined)
         setPassword('')
       }}
     >
@@ -208,10 +212,12 @@ function ReconnectBar({ tab }: { tab: Tab }) {
       <span className="reconnect-text">
         {tab.status === 'error' ? `Ошибка: ${tab.message ?? 'не удалось подключиться'}` : 'Сессия завершена'}
       </span>
-      <label className="rc-input">
-        <IconLock size={15} />
-        <input type="password" placeholder="Пароль" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="off" />
-      </label>
+      {tab.needsPassword && (
+        <label className="rc-input">
+          <IconLock size={15} />
+          <input type="password" placeholder="Пароль" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="off" />
+        </label>
+      )}
       <button className="btn-cta small" type="submit">
         <IconRefresh size={16} /> Переподключить
       </button>

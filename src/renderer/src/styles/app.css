@@ -27,7 +27,7 @@
   color-scheme: dark;
 }
 
-* { box-sizing: border-box; }
+* { box-sizing: border-box; scrollbar-width: thin; scrollbar-color: #ffffff1f transparent; }
 html, body, #root { height: 100%; margin: 0; }
 body {
   background: var(--page);
@@ -44,8 +44,8 @@ kbd { font: 11px var(--mono); padding: 1px 5px; border-radius: 4px; background: 
 :focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
 .muted { color: var(--muted); }
 
-.app { height: 100%; display: grid; grid-template-rows: 52px 1fr 24px; }
-.content { position: relative; min-height: 0; display: flex; }
+.app { height: 100%; display: grid; grid-template-rows: 52px minmax(0, 1fr) 24px; grid-template-columns: minmax(0, 1fr); overflow: hidden; }
+.content { position: relative; min-height: 0; min-width: 0; display: flex; overflow: hidden; }
 
 /* ---------- Top bar ---------- */
 .topbar {
@@ -353,3 +353,80 @@ kbd { font: 11px var(--mono); padding: 1px 5px; border-radius: 4px; background: 
 .btn:hover { background: var(--card-hover); }
 .btn-primary { background: var(--blue); color: #fff; }
 .btn-primary:hover { background: var(--blue); filter: brightness(1.1); }
+
+/* ---------- Step 2: vault editing ---------- */
+.card { cursor: pointer; position: relative; }
+.card:focus-visible { outline: 2px solid var(--blue); }
+.card-title { display: flex; align-items: center; gap: 7px; }
+.fav-mark { color: var(--yellow); flex: none; }
+.live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); flex: none; box-shadow: 0 0 0 3px #22b77b33; }
+.card-trailing .icon-btn { width: 32px; height: 32px; }
+.as-list .card-grid { grid-template-columns: 1fr; gap: 6px; }
+.as-list .card { min-height: 60px; padding: 8px 14px; }
+.as-list .tile { width: 36px !important; height: 36px !important; border-radius: 9px; }
+
+.split { position: relative; }
+.menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  min-width: 220px;
+  padding: 6px;
+  border-radius: 12px;
+  background: var(--active);
+  box-shadow: 0 16px 40px #0009;
+  display: flex;
+  flex-direction: column;
+}
+.menu button { height: 38px !important; padding: 0 12px; border-radius: 8px !important; background: none !important; justify-content: flex-start; font-weight: 500 !important; font-size: 14px !important; }
+.menu button:hover { background: #ffffff12 !important; }
+
+.tag-bar { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 34px 6px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; border: 0; border-radius: 14px; background: var(--card); color: var(--text); font-size: 13px; }
+.chip.on { background: var(--blue); color: #fff; }
+.chip button { border: 0; background: none; color: var(--muted); padding: 0; font-size: 15px; line-height: 1; }
+.notice { display: flex; align-items: center; gap: 10px; margin: 4px 34px 0; padding: 8px 8px 8px 14px; border-radius: 10px; background: #1d8cf822; color: #b8dcff; }
+.notice .icon-btn { width: 28px; height: 28px; margin-left: auto; }
+.notice.warn { background: #f0b93b1f; color: #f5d38a; }
+
+.breadcrumbs { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; margin-top: 14px; color: var(--muted); font-weight: 600; }
+.breadcrumbs button { border: 0; background: none; color: var(--muted); font-weight: 600; padding: 4px 6px; border-radius: 6px; }
+.breadcrumbs button:hover { color: var(--text); background: #ffffff0d; }
+.crumb { display: inline-flex; align-items: center; gap: 4px; }
+.crumb-current { display: inline-flex; align-items: center; gap: 4px; color: var(--text); padding-left: 6px; }
+.icon-btn.small { width: 28px; height: 28px; }
+.icon-btn.danger { color: #fff; background: var(--red); }
+
+.drawer-form { display: flex; flex-direction: column; gap: 16px; }
+.field-pair { display: grid; grid-template-columns: 1fr 96px; gap: 10px; }
+.port-input { text-align: center; }
+.field-row select { flex: 1; height: 100%; border: 0; outline: 0; background: none; font-size: 15px; color: var(--text); }
+.field-row select option { background: var(--toolbar); }
+.field textarea.notes { display: block; width: 100%; padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: none; outline: 0; resize: vertical; font: 13px/1.5 var(--mono); user-select: text; }
+.field textarea.notes:focus { border-color: var(--blue); }
+.segmented { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 4px; border-radius: 10px; background: var(--page); }
+.segmented button { height: 36px; border: 0; border-radius: 8px; background: none; color: var(--muted); font-weight: 600; }
+.segmented button.on { background: var(--active); color: var(--text); }
+.link-btn { align-self: flex-start; border: 0; background: none; padding: 0; color: #7dbbff; font-size: 13px; }
+.link-btn:hover { text-decoration: underline; }
+.tags-field { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: 48px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; }
+.tags-field:focus-within { border-color: var(--blue); }
+.tags-field input { flex: 1; min-width: 120px; border: 0; outline: 0; background: none; user-select: text; }
+.tags-field input::placeholder { color: var(--faint); }
+.tags-field .chip { background: var(--active); }
+.swatches { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.swatches > button:not(.fav-toggle) { width: 26px; height: 26px; border: 2px solid transparent; border-radius: 8px; padding: 0; }
+.swatches > button.on { border-color: #fff; }
+.fav-toggle { white-space: nowrap; flex: none; display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; border: 0; border-radius: 8px; background: var(--page); color: var(--muted); font-weight: 600; font-size: 13px; }
+.fav-toggle.on { color: var(--yellow); }
+.check { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; cursor: pointer; }
+.check input { width: 16px; height: 16px; accent-color: var(--blue); }
+.foot-row { display: flex; gap: 10px; }
+.foot-row .grow { flex: 1; }
+.btn-soft { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.drawer-foot .btn-soft { height: 48px; }
+.rc-input.wide { display: flex; height: 44px; margin-bottom: 12px; }
+.rc-input.wide input { width: auto; flex: 1; }
+.modal .check { margin-bottom: 16px; }
+.form-error { color: var(--red); font-size: 13px; }

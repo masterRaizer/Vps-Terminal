@@ -12,6 +12,10 @@ export interface Tab {
   id: string
   title: string
   params: ConnectParams
+  /** Saved host this tab was opened from; main resolves its secrets. */
+  hostId?: string
+  /** Whether reconnecting needs the user to type a password again. */
+  needsPassword: boolean
   sessionId?: string
   status: SessionStatus | 'idle'
   message?: string
@@ -51,11 +55,12 @@ interface State extends Prefs {
   focusSearchTick: number
 
   openTab(params: ConnectParams, password: string): void
+  openHostTab(host: { id: string; label: string; address: string; port: number; username: string }, needsPassword: boolean, password?: string): void
   closeTab(id: string): void
   activate(id: string): void
   patchTab(id: string, patch: Partial<Tab>): void
   takePassword(id: string): string | undefined
-  reconnect(id: string, password: string): void
+  reconnect(id: string, password?: string): void
   showVault(section?: Section): void
   showSftp(): void
   newConnection(): void
@@ -106,6 +111,21 @@ export const useSessions = create<State>((set, get) => ({
       id,
       title: params.host,
       params,
+      needsPassword: true,
+      status: 'idle',
+      attempt: 1,
+      pendingPassword: password
+    }
+    set((s) => ({ tabs: [...s.tabs, tab], activeId: id, view: 'term' }))
+  },
+  openHostTab: (host, needsPassword, password) => {
+    const id = crypto.randomUUID()
+    const tab: Tab = {
+      id,
+      title: host.label,
+      params: { host: host.address, port: host.port, username: host.username },
+      hostId: host.id,
+      needsPassword,
       status: 'idle',
       attempt: 1,
       pendingPassword: password

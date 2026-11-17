@@ -1,28 +1,44 @@
-import type React from 'react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type { Host } from '@shared/vault'
 import { useSessions } from '@/store/sessions'
+import { countHostsDeep, groupPath, useVault } from '@/store/vault'
 import { parseTarget } from '@/lib/parseTarget'
-import { Card, Drawer, EmptyState, Field, SplitButton, ToolButton } from '@/components/ui'
-import { IconEye, IconEyeOff, IconGrid, IconHosts, IconLock, IconPlug, IconPlus, IconServer, IconTag, IconTerminal, IconUser } from '@/components/Icons'
+import { connectHost } from '@/lib/connectHost'
+import { Card, EmptyState, SplitButton, ToolButton } from '@/components/ui'
+import { HostDrawer } from '@/components/drawers/HostDrawer'
+import { GroupDrawer } from '@/components/drawers/GroupDrawer'
+import { QuickConnectDrawer } from '@/components/drawers/QuickConnectDrawer'
+import {
+  IconChevronRight,
+  IconDownload,
+  IconGroup,
+  IconHosts,
+  IconList,
+  IconGrid,
+  IconPencil,
+  IconPlus,
+  IconServer,
+  IconStar,
+  IconTag,
+  IconTerminal
+} from '@/components/Icons'
 
-interface Draft {
-  host: string
-  port: string
-  username: string
-  password: string
-}
+const matches = (h: Host, q: string): boolean =>
+  [h.label, h.address, h.username, ...h.tags].some((v) => v.toLowerCase().includes(q))
 
 export function HostsPage() {
-  const { focusSearchTick, openTab, tabs, activate } = useSessions()
+  const v = useVault()
+  const { focusSearchTick, tabs } = useSessions()
   const searchRef = useRef<HTMLInputElement>(null)
   const [query, setQuery] = useState('')
-  const [draft, setDraft] = useState<Draft | null>(null)
+  const [listView, setListView] = useState(false)
+  const [showTags, setShowTags] = useState(false)
+  const [notice, setNotice] = useState<string>()
 
   useEffect(() => {
     searchRef.current?.focus()
   }, [focusSearchTick])
 
-  // Ctrl+K focuses the search/connect bar.
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'k') {
@@ -34,13 +50,70 @@ export function HostsPage() {
     return () => window.removeEventListener('keydown', onKey, true)
   }, [])
 
-  const startConnect = (): void => {
+  const q = query.trim().toLowerCase()
+  const allTags = useMemo(() => [...new Set(v.hosts.flatMap((h) => h.tags))].sort(), [v.hosts])
+  const searching = Boolean(q || v.tagFilter)
+  const liveHostIds = new Set(tabs.filter((t) => t.status === 'ready').map((t) => t.hostId))
+
+  const visibleHosts = v.hosts.filter((h) =>
+    searching ? (!q || matches(h, q)) && (!v.tagFilter || h.tags.includes(v.tagFilter)) : h.groupId === v.currentGroupId
+  )
+  const visibleGroups = searching
+    ? v.groups.filter((g) => q && g.name.toLowerCase().includes(q))
+    : v.groups.filter((g) => g.parentId === v.currentGroupId)
+  const favorites = !searching && v.currentGroupId === null ? v.hosts.filter((h) => h.favorite) : []
+  const path = groupPath(v.currentGroupId, v.groups)
+
+  const quickConnect = (): void => {
     const t = parseTarget(query)
-    setDraft({ host: t.host, port: String(t.port ?? 22), username: t.username ?? 'root', password: '' })
+    v.edit({ kind: 'quick', host: t.host, port: t.port ?? 22, username: t.username ?? 'root' })
   }
 
-  const live = tabs.filter((t) => !query || `${t.params.username}@${t.params.host}`.includes(query.trim()))
+  const onSubmit = (): void => {
+    // Enter on an exact single match connects to it; otherwise open quick connect.
+    if (q && visibleHosts.length === 1 && !query.includes('@') && !query.startsWith('ssh ')) connectHost(visibleHosts[0])
+    else if (q) quickConnect()
+  }
 
+  const runImport = async (): Promise<void> => {
+    try {
+      const r = await window.api.vault.importHosts()
+      if (!r) return
+      await v.load()
+      setNotice(`Импортировано: ${r.added}, пропущено (уже есть): ${r.skipped}${r.errors.length ? `, ошибок: ${r.errors.length} — ${r.errors[0]}` : ''}`)
+    } catch (e) {
+      setNotice(`Импорт не удался: ${(e as Error).message.replace(/^Error invoking remote method '[^']+': (?:\w*Error: )?/, '')}`)
+    }
+  }
+
+  const hostCard = (h: Host) => (
+    <Card
+      key={h.id}
+      tone={h.color ?? undefined}
+      icon={<IconServer size={22} />}
+      title={h.label}
+      subtitle={`ssh, ${h.username}${h.port !== 22 ? `, :${h.port}` : ''}${h.tags.length ? ` · ${h.tags.join(', ')}` : ''}`}
+      selected={v.editing?.kind === 'host' && v.editing.id === h.id}
+      onClick={() => connectHost(h)}
+      badge={liveHostIds.has(h.id) ? <span className="live-dot" title="Сессия открыта" /> : h.favorite ? <IconStar size={14} className="fav-mark" /> : undefined}
+      trailing={
+        <span
+          role="button"
+          tabIndex={0}
+          className="icon-btn"
+          title="Изменить"
+          onClick={(e) => {
+            e.stopPropagation()
+            v.edit({ kind: 'host', id: h.id })
+          }}
+        >
+          <IconPencil size={17} />
+        </span>
+      }
+    />
+  )
+
+  const editing = v.editing
   return (
     <div className="page-with-drawer">
       <div className="page">
@@ -48,129 +121,165 @@ export function HostsPage() {
           className="omnibar"
           onSubmit={(e) => {
             e.preventDefault()
-            startConnect()
+            onSubmit()
           }}
         >
           <input
             ref={searchRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => e.key === 'Escape' && setQuery('')}
             placeholder="Найдите хост или введите ssh user@hostname…"
             spellCheck={false}
           />
-          <button className="omni-btn" type="submit" disabled={!query.trim()}>
+          <button className="omni-btn" type="button" disabled={!q} onClick={quickConnect}>
             Подключить
           </button>
         </form>
 
         <div className="toolbar">
-          <SplitButton icon={<IconPlus size={18} />} label="Новый хост" disabled title="Менеджер хостов — шаг 2" />
-          <ToolButton icon={<IconTerminal size={18} />} label="Быстрое подключение" onClick={() => setDraft({ host: '', port: '22', username: 'root', password: '' })} />
+          <SplitButton
+            icon={<IconPlus size={18} />}
+            label="Новый хост"
+            onClick={() => v.edit({ kind: 'host', groupId: v.currentGroupId })}
+            menu={[
+              { label: 'Новый хост', onClick: () => v.edit({ kind: 'host', groupId: v.currentGroupId }) },
+              { label: 'Новая группа', onClick: () => v.edit({ kind: 'group', parentId: v.currentGroupId }) },
+              { label: 'Импорт hosts.json…', onClick: () => void runImport() }
+            ]}
+          />
+          <ToolButton icon={<IconTerminal size={18} />} label="Быстрое подключение" onClick={quickConnect} />
+          <ToolButton icon={<IconDownload size={18} />} label="Импорт" onClick={() => void runImport()} />
           <span className="toolbar-spacer" />
-          <ToolButton icon={<IconGrid size={18} />} title="Плитка" />
-          <ToolButton icon={<IconTag size={18} />} title="Теги" disabled />
+          <ToolButton icon={listView ? <IconGrid size={18} /> : <IconList size={18} />} title={listView ? 'Плитка' : 'Список'} onClick={() => setListView((x) => !x)} />
+          <ToolButton icon={<IconTag size={18} />} title="Фильтр по тегам" onClick={() => setShowTags((x) => !x)} disabled={!allTags.length} />
         </div>
 
-        <div className="page-body">
-          {live.length > 0 && (
+        {showTags && allTags.length > 0 && (
+          <div className="tag-bar">
+            {allTags.map((t) => (
+              <button key={t} className={`chip ${v.tagFilter === t ? 'on' : ''}`} onClick={() => v.setTagFilter(v.tagFilter === t ? null : t)}>
+                {t}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {notice && (
+          <div className="notice" role="status">
+            {notice}
+            <button className="icon-btn" onClick={() => setNotice(undefined)} aria-label="Скрыть">
+              ×
+            </button>
+          </div>
+        )}
+        {!v.secretsPersistent && (
+          <div className="notice warn">Диспетчер учётных данных недоступен — сохранённые пароли живут только до закрытия приложения.</div>
+        )}
+
+        <div className={`page-body ${listView ? 'as-list' : ''}`}>
+          {!searching && path.length > 0 && (
+            <nav className="breadcrumbs">
+              <button onClick={() => v.openGroup(null)}>Все хосты</button>
+              {path.map((g, i) => (
+                <span key={g.id} className="crumb">
+                  <IconChevronRight size={15} />
+                  {i === path.length - 1 ? (
+                    <span className="crumb-current">
+                      {g.name}
+                      <button className="icon-btn small" title="Изменить группу" onClick={() => v.edit({ kind: 'group', id: g.id })}>
+                        <IconPencil size={15} />
+                      </button>
+                    </span>
+                  ) : (
+                    <button onClick={() => v.openGroup(g.id)}>{g.name}</button>
+                  )}
+                </span>
+              ))}
+            </nav>
+          )}
+
+          {favorites.length > 0 && (
             <section>
-              <h2 className="section-title">Открытые сессии</h2>
+              <h2 className="section-title">Избранное</h2>
+              <div className="card-grid">{favorites.map(hostCard)}</div>
+            </section>
+          )}
+
+          {visibleGroups.length > 0 && (
+            <section>
+              <h2 className="section-title">Группы</h2>
               <div className="card-grid">
-                {live.map((t) => (
-                  <Card
-                    key={t.id}
-                    tone={t.status === 'ready' ? 'green' : 'slate'}
-                    icon={<IconServer size={22} />}
-                    title={t.title}
-                    subtitle={`ssh, ${t.params.username}`}
-                    onClick={() => activate(t.id)}
-                  />
-                ))}
+                {visibleGroups.map((g) => {
+                  const n = countHostsDeep(g.id, v.groups, v.hosts)
+                  return (
+                    <Card
+                      key={g.id}
+                      tone={g.color ?? undefined}
+                      icon={<IconGroup size={22} />}
+                      title={g.name}
+                      subtitle={`${n} ${plural(n, 'хост', 'хоста', 'хостов')}`}
+                      selected={editing?.kind === 'group' && editing.id === g.id}
+                      onClick={() => {
+                        setQuery('')
+                        v.setTagFilter(null)
+                        v.openGroup(g.id)
+                      }}
+                      trailing={
+                        <span
+                          role="button"
+                          tabIndex={0}
+                          className="icon-btn"
+                          title="Изменить"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            v.edit({ kind: 'group', id: g.id })
+                          }}
+                        >
+                          <IconPencil size={17} />
+                        </span>
+                      }
+                    />
+                  )
+                })}
               </div>
             </section>
           )}
+
           <section>
-            <h2 className="section-title">Хосты</h2>
-            <EmptyState
-              icon={<IconHosts size={26} />}
-              title="Сохранённых хостов пока нет"
-              text="Группы, теги и карточки хостов появятся на следующем шаге. Сейчас можно подключиться через строку сверху."
-            />
+            <h2 className="section-title">{searching ? 'Найдено' : 'Хосты'}</h2>
+            {visibleHosts.length > 0 ? (
+              <div className="card-grid">{visibleHosts.map(hostCard)}</div>
+            ) : searching ? (
+              <EmptyState icon={<IconHosts size={26} />} title="Ничего не найдено" text="Нажмите «Подключить», чтобы зайти по введённому адресу." />
+            ) : v.loaded ? (
+              <EmptyState
+                icon={<IconHosts size={26} />}
+                title={v.currentGroupId ? 'В группе нет хостов' : 'Сохранённых хостов пока нет'}
+                text="Добавьте хост или импортируйте список из hosts.json."
+                action={
+                  <button className="btn-soft" onClick={() => v.edit({ kind: 'host', groupId: v.currentGroupId })}>
+                    Добавить хост
+                  </button>
+                }
+              />
+            ) : null}
+            {v.error && <div className="form-error">{v.error}</div>}
           </section>
         </div>
       </div>
 
-      {draft && (
-        <ConnectDrawer
-          draft={draft}
-          onChange={setDraft}
-          onClose={() => setDraft(null)}
-          onConnect={() => {
-            const port = Number(draft.port)
-            openTab({ host: draft.host.trim(), port, username: draft.username.trim() }, draft.password)
-            setDraft(null)
-            setQuery('')
-          }}
-        />
-      )}
+      {editing?.kind === 'host' && <HostDrawer key={editing.id ?? 'new'} hostId={editing.id} groupId={editing.groupId} />}
+      {editing?.kind === 'group' && <GroupDrawer key={editing.id ?? 'new'} groupId={editing.id} parentId={editing.parentId} />}
+      {editing?.kind === 'quick' && <QuickConnectDrawer key={`${editing.host}:${editing.port}`} initial={editing} />}
     </div>
   )
 }
 
-function ConnectDrawer({ draft, onChange, onClose, onConnect }: { draft: Draft; onChange: (d: Draft) => void; onClose: () => void; onConnect: () => void }) {
-  const [showPwd, setShowPwd] = useState(false)
-  const port = Number(draft.port)
-  const valid = draft.host.trim() && !/\s/.test(draft.host.trim()) && draft.username.trim() && Number.isInteger(port) && port > 0 && port < 65536
-  const set = (k: keyof Draft) => (e: React.ChangeEvent<HTMLInputElement>) => onChange({ ...draft, [k]: e.target.value })
-
-  return (
-    <Drawer
-      title="Новое подключение"
-      onClose={onClose}
-      footer={
-        <button className="btn-cta" disabled={!valid} onClick={onConnect} type="button">
-          <IconPlug size={18} /> Подключиться
-        </button>
-      }
-    >
-      <form
-        className="drawer-group"
-        onSubmit={(e) => {
-          e.preventDefault()
-          if (valid) onConnect()
-        }}
-      >
-        <h3 className="group-title">Адрес</h3>
-        <Field label="Хост или IP" required value={draft.host} onChange={set('host')} autoFocus={!draft.host} placeholder="203.0.113.10" />
-        <Field label="Порт" value={draft.port} onChange={(e) => onChange({ ...draft, port: e.target.value.replace(/\D/g, '').slice(0, 5) })} />
-        <button type="submit" hidden />
-      </form>
-      <form
-        className="drawer-group"
-        onSubmit={(e) => {
-          e.preventDefault()
-          if (valid) onConnect()
-        }}
-      >
-        <h3 className="group-title">Аутентификация</h3>
-        <Field label="Пользователь" required icon={<IconUser size={16} />} value={draft.username} onChange={set('username')} />
-        <div className="field-with-action">
-          <Field
-            label="Пароль"
-            icon={<IconLock size={16} />}
-            type={showPwd ? 'text' : 'password'}
-            value={draft.password}
-            onChange={set('password')}
-            autoComplete="off"
-            autoFocus={Boolean(draft.host)}
-          />
-          <button type="button" className="icon-btn field-action" onClick={() => setShowPwd((v) => !v)} title={showPwd ? 'Скрыть' : 'Показать'}>
-            {showPwd ? <IconEyeOff size={17} /> : <IconEye size={17} />}
-          </button>
-        </div>
-        <p className="hint">Пароль уходит в основной процесс только для входа и нигде не сохраняется. Ключи и сохранение паролей — шаги 2–3.</p>
-        <button type="submit" hidden />
-      </form>
-    </Drawer>
-  )
+function plural(n: number, one: string, few: string, many: string): string {
+  const m10 = n % 10
+  const m100 = n % 100
+  if (m10 === 1 && m100 !== 11) return one
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few
+  return many
 }

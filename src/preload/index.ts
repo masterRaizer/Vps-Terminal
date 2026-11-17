@@ -11,6 +11,7 @@ const api: VpsApi = {
   appInfo: () => ipcRenderer.invoke(IPC.appInfo),
   ssh: {
     connect: (req) => ipcRenderer.invoke(IPC.sshConnect, req),
+    connectHost: (req) => ipcRenderer.invoke(IPC.sshConnectHost, req),
     write: (id, data) => ipcRenderer.send(IPC.sshWrite, id, data),
     resize: (id, cols, rows) => ipcRenderer.send(IPC.sshResize, id, cols, rows),
     disconnect: (id) => ipcRenderer.send(IPC.sshDisconnect, id),
@@ -18,6 +19,14 @@ const api: VpsApi = {
     onStatus: (cb) => subscribe<[SessionEvent]>(IPC.sshStatus, cb),
     onHostKeyPrompt: (cb) => subscribe<[HostKeyPrompt]>(IPC.hostKeyPrompt, cb),
     answerHostKey: (requestId, accept) => ipcRenderer.send(IPC.hostKeyAnswer, requestId, accept)
+  },
+  vault: {
+    snapshot: () => ipcRenderer.invoke(IPC.vaultSnapshot),
+    saveHost: (host, password) => ipcRenderer.invoke(IPC.vaultSaveHost, host, password),
+    deleteHost: (id) => ipcRenderer.invoke(IPC.vaultDeleteHost, id),
+    saveGroup: (group) => ipcRenderer.invoke(IPC.vaultSaveGroup, group),
+    deleteGroup: (id) => ipcRenderer.invoke(IPC.vaultDeleteGroup, id),
+    importHosts: () => ipcRenderer.invoke(IPC.vaultImportHosts)
   }
 }
 

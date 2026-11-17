@@ -20,7 +20,15 @@ export function validateConnectRequest(raw: unknown): ConnectRequest {
     port,
     username,
     password: r.password as string | undefined,
+    agent: r.agent === true,
     cols: clamp(cols, 10, 1000),
     rows: clamp(rows, 4, 500)
   }
+}
+
+/** Clamp terminal geometry coming from the renderer. */
+export function validateGeometry(raw: Record<string, unknown>): { cols: number; rows: number } {
+  const clamp = (n: unknown, lo: number, hi: number, d: number): number =>
+    Number.isInteger(n) ? Math.min(hi, Math.max(lo, n as number)) : d
+  return { cols: clamp(raw.cols, 10, 1000, 80), rows: clamp(raw.rows, 4, 500, 24) }
 }

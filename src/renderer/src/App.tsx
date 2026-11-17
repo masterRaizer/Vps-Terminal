@@ -1,4 +1,7 @@
+import { useEffect } from 'react'
 import { useSessions } from '@/store/sessions'
+import { useVault } from '@/store/vault'
+import { PasswordPrompt } from './components/PasswordPrompt'
 import { TopBar } from './components/TopBar'
 import { NavSidebar } from './components/NavSidebar'
 import { TerminalView } from './components/TerminalView'
@@ -21,6 +24,9 @@ const PAGES = {
 export function App() {
   const { tabs, activeId, view, section, sidePanel } = useSessions()
   const Page = PAGES[section]
+  useEffect(() => {
+    void useVault.getState().load()
+  }, [])
   return (
     <div className="app">
       <TopBar />
@@ -44,6 +50,7 @@ export function App() {
       </div>
       <StatusBar />
       <HostKeyDialog />
+      <PasswordPrompt />
     </div>
   )
 }

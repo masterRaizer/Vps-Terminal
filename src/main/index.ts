@@ -1,11 +1,18 @@
 import { join } from 'node:path'
-import { app, BrowserWindow, ipcMain, session, shell } from 'electron'
+import { readFile, stat } from 'node:fs/promises'
+import { app, BrowserWindow, dialog, ipcMain, session, shell } from 'electron'
 import { IPC, type AppInfo, type ConnectRequest, type HostKeyPrompt } from '@shared/ipc'
 import { SshManager } from './ssh-manager'
-import { validateConnectRequest } from './validate'
+import { validateConnectRequest, validateGeometry } from './validate'
+import { openDb } from './db'
+import { createSecretStore } from './secrets'
+import { VaultRepo } from './vault-repo'
+import { VaultService } from './vault-service'
+import { importHosts } from './import-hosts'
 
 const APP_NAME = 'Vps Terminal SSH'
 let mainWindow: BrowserWindow | null = null
+let vault: VaultService
 const pendingHostKeys = new Map<string, (accept: boolean) => void>()
 
 const ssh = new SshManager({
@@ -77,6 +84,48 @@ function registerIpc(): void {
     const req: ConnectRequest = validateConnectRequest(raw)
     return ssh.connect(req)
   })
+  ipcMain.handle(IPC.sshConnectHost, async (_e, raw: unknown) => {
+    const r = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>
+    if (typeof r.hostId !== 'string') throw new Error('Неверный id хоста')
+    if (r.password !== undefined && typeof r.password !== 'string') throw new Error('Неверный пароль')
+    const { host, password } = await vault.resolveForConnect(r.hostId)
+    const req: ConnectRequest = {
+      host: host.address,
+      port: host.port,
+      username: host.username,
+      password: host.auth === 'password' ? ((r.password as string | undefined) ?? password ?? undefined) : undefined,
+      agent: host.auth === 'agent',
+      ...validateGeometry(r)
+    }
+    if (host.auth === 'key') throw new Error('Вход по ключу появится на шаге 3')
+    vault.markConnected(host.id)
+    return ssh.connect(req)
+  })
+
+  ipcMain.handle(IPC.vaultSnapshot, () => vault.snapshot())
+  ipcMain.handle(IPC.vaultSaveHost, (_e, host: unknown, password: unknown) => vault.saveHost(host, password))
+  ipcMain.handle(IPC.vaultDeleteHost, (_e, id: unknown) => vault.deleteHost(id))
+  ipcMain.handle(IPC.vaultSaveGroup, (_e, group: unknown) => vault.saveGroup(group))
+  ipcMain.handle(IPC.vaultDeleteGroup, (_e, id: unknown) => vault.deleteGroup(id))
+  ipcMain.handle(IPC.vaultImportHosts, async () => {
+    if (!mainWindow) return null
+    const pick = await dialog.showOpenDialog(mainWindow, {
+      title: 'Импорт хостов',
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+      properties: ['openFile']
+    })
+    if (pick.canceled || !pick.filePaths[0]) return null
+    const file = pick.filePaths[0]
+    if ((await stat(file)).size > 5 * 1024 * 1024) throw new Error('Файл больше 5 МБ')
+    let data: unknown
+    try {
+      data = JSON.parse((await readFile(file, 'utf-8')).replace(/^\uFEFF/, ''))
+    } catch {
+      throw new Error('Файл не является корректным JSON')
+    }
+    return importHosts(data, vault)
+  })
+
   ipcMain.on(IPC.sshWrite, (_e, id: unknown, data: unknown) => {
     if (typeof id === 'string' && typeof data === 'string') ssh.write(id, data)
   })
@@ -97,6 +146,8 @@ function registerIpc(): void {
 }
 
 app.setAppUserModelId('com.vpsterminal.ssh')
+// Isolated profile for automated tests of the unpackaged app.
+if (!app.isPackaged && process.env['VTS_USER_DATA']) app.setPath('userData', process.env['VTS_USER_DATA'])
 
 if (!app.requestSingleInstanceLock()) {
   app.quit()
@@ -121,6 +172,8 @@ if (!app.requestSingleInstanceLock()) {
       })
     }
     session.defaultSession.setPermissionRequestHandler((_wc, _perm, cb) => cb(false))
+    const db = openDb(join(app.getPath('userData'), 'vault.db'))
+    vault = new VaultService(new VaultRepo(db), createSecretStore())
     registerIpc()
     createWindow()
     app.on('activate', () => {

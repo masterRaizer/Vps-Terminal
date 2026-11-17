@@ -249,3 +249,23 @@ export const IconPlug = (p: P) => (
     <path d="M9 3.5v4M15 3.5v4M6.5 7.5h11v3a5.5 5.5 0 0 1-11 0v-3zM12 16v4.5" />
   </Base>
 )
+export const IconTrash = (p: P) => (
+  <Base {...p}>
+    <path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13M10 11v5.5M14 11v5.5" />
+  </Base>
+)
+export const IconStar = (p: P) => (
+  <Base {...p}>
+    <path d="M12 3.8l2.5 5.1 5.6.8-4 4 .9 5.6-5-2.7-5 2.7.9-5.6-4-4 5.6-.8L12 3.8z" />
+  </Base>
+)
+export const IconPencil = (p: P) => (
+  <Base {...p}>
+    <path d="M4.5 19.5l1-4.2L15.8 5a2 2 0 0 1 2.8 0l.4.4a2 2 0 0 1 0 2.8L8.7 18.5l-4.2 1z" />
+  </Base>
+)
+export const IconDownload = (p: P) => (
+  <Base {...p}>
+    <path d="M12 4v11M7.5 10.5L12 15l4.5-4.5M5 19.5h14" />
+  </Base>
+)

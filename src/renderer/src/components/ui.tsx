@@ -1,10 +1,14 @@
-import { useId, type InputHTMLAttributes, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, type InputHTMLAttributes, type ReactNode } from 'react'
 import { IconChevronDown, IconCollapseRight } from './Icons'
 
-/** Coloured square tile used on every card. */
-export function Tile({ children, tone = 'blue', size = 44 }: { children: ReactNode; tone?: 'blue' | 'orange' | 'green' | 'slate'; size?: number }) {
+type Tone = 'blue' | 'orange' | 'green' | 'slate'
+const TONES: readonly string[] = ['blue', 'orange', 'green', 'slate']
+
+/** Coloured square tile used on every card. `tone` is a named tone or a #rrggbb colour. */
+export function Tile({ children, tone = 'blue', size = 44 }: { children: ReactNode; tone?: Tone | string; size?: number }) {
+  const named = TONES.includes(tone)
   return (
-    <span className={`tile tile-${tone}`} style={{ width: size, height: size }}>
+    <span className={`tile ${named ? `tile-${tone}` : ''}`} style={{ width: size, height: size, ...(named ? {} : { background: tone }) }}>
       {children}
     </span>
   )
@@ -12,36 +16,83 @@ export function Tile({ children, tone = 'blue', size = 44 }: { children: ReactNo
 
 export function Card(props: {
   icon: ReactNode
-  tone?: 'blue' | 'orange' | 'green' | 'slate'
+  tone?: Tone | string
   title: string
   subtitle?: string
   selected?: boolean
   onClick?: () => void
   trailing?: ReactNode
+  badge?: ReactNode
 }) {
   return (
-    <button className={`card ${props.selected ? 'selected' : ''}`} onClick={props.onClick} type="button">
+    <div
+      className={`card ${props.selected ? 'selected' : ''}`}
+      role="button"
+      tabIndex={0}
+      onClick={props.onClick}
+      onKeyDown={(e) => {
+        if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) {
+          e.preventDefault()
+          props.onClick?.()
+        }
+      }}
+    >
       <Tile tone={props.tone}>{props.icon}</Tile>
       <span className="card-text">
-        <span className="card-title">{props.title}</span>
+        <span className="card-title">
+          {props.title}
+          {props.badge}
+        </span>
         {props.subtitle && <span className="card-sub">{props.subtitle}</span>}
       </span>
       {props.trailing && <span className="card-trailing">{props.trailing}</span>}
-    </button>
+    </div>
   )
 }
 
+export interface MenuItem {
+  label: string
+  onClick: () => void
+}
+
 /** Primary toolbar action with a dropdown chevron segment. */
-export function SplitButton({ icon, label, onClick, disabled, title }: { icon: ReactNode; label: string; onClick?: () => void; disabled?: boolean; title?: string }) {
+export function SplitButton({ icon, label, onClick, disabled, title, menu }: { icon: ReactNode; label: string; onClick?: () => void; disabled?: boolean; title?: string; menu?: MenuItem[] }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLSpanElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const close = (e: MouseEvent): void => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false)
+    }
+    window.addEventListener('mousedown', close)
+    return () => window.removeEventListener('mousedown', close)
+  }, [open])
   return (
-    <span className="split" title={title}>
+    <span className="split" title={title} ref={ref}>
       <button className="split-main" onClick={onClick} disabled={disabled} type="button">
         {icon}
         {label}
       </button>
-      <button className="split-more" disabled={disabled} type="button" aria-label="Ещё">
+      <button className="split-more" disabled={disabled || !menu?.length} type="button" aria-label="Ещё" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
         <IconChevronDown size={16} />
       </button>
+      {open && menu && (
+        <span className="menu" role="menu">
+          {menu.map((m) => (
+            <button
+              key={m.label}
+              role="menuitem"
+              type="button"
+              onClick={() => {
+                setOpen(false)
+                m.onClick()
+              }}
+            >
+              {m.label}
+            </button>
+          ))}
+        </span>
+      )}
     </span>
   )
 }
@@ -84,11 +135,12 @@ export function Field({ label, required, icon, multiline, ...rest }: InputHTMLAt
 }
 
 /** Right-hand editor drawer used by vault pages. */
-export function Drawer({ title, onClose, children, footer }: { title: string; onClose: () => void; children: ReactNode; footer?: ReactNode }) {
+export function Drawer({ title, onClose, children, footer, actions }: { title: string; onClose: () => void; children: ReactNode; footer?: ReactNode; actions?: ReactNode }) {
   return (
-    <aside className="drawer" aria-label={title}>
+    <aside className="drawer" aria-label={title} onKeyDown={(e) => e.key === 'Escape' && onClose()}>
       <header className="drawer-head">
         <h2>{title}</h2>
+        {actions}
         <button className="icon-btn" onClick={onClose} title="Скрыть панель" type="button">
           <IconCollapseRight size={18} />
         </button>
