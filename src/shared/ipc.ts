@@ -1,5 +1,5 @@
 /** IPC contract shared by main, preload and renderer. */
-import type { Group, GroupInput, Host, HostInput, PasswordChange, VaultSnapshot } from './vault'
+import type { Group, GroupInput, Host, HostInput, Identity, IdentityInput, Integration, IntegrationInput, KeyImportResult, PasswordChange, SshKey, SyncResult, VaultSnapshot } from './vault'
 
 export interface ConnectRequest {
   host: string
@@ -23,6 +23,9 @@ export interface HostConnectRequest {
   rows: number
   /** One-off password when none is stored for the host. Not persisted. */
   password?: string
+  /** Passphrase for an encrypted key, typed by the user. */
+  passphrase?: string
+  rememberPassphrase?: boolean
 }
 
 export interface HostKeyPrompt {
@@ -59,7 +62,20 @@ export const IPC = {
   vaultDeleteHost: 'vault:delete-host',
   vaultSaveGroup: 'vault:save-group',
   vaultDeleteGroup: 'vault:delete-group',
-  vaultImportHosts: 'vault:import-hosts'
+  vaultImportHosts: 'vault:import-hosts',
+  keysImportFiles: 'keys:import-files',
+  keysImportFolder: 'keys:import-folder',
+  keysImportText: 'keys:import-text',
+  keysGenerate: 'keys:generate',
+  keysRename: 'keys:rename',
+  keysDelete: 'keys:delete',
+  keysForgetPassphrase: 'keys:forget-passphrase',
+  keysPublic: 'keys:public',
+  identitySave: 'identity:save',
+  identityDelete: 'identity:delete',
+  integrationSave: 'integration:save',
+  integrationDelete: 'integration:delete',
+  integrationSync: 'integration:sync'
 } as const
 
 export interface AppInfo {
@@ -90,5 +106,26 @@ export interface VpsApi {
     deleteGroup(id: string): Promise<void>
     /** Opens a file picker in main; resolves null when cancelled. */
     importHosts(): Promise<{ added: number; skipped: number; errors: string[] } | null>
+  }
+  keys: {
+    /** File / folder pickers run in main; null when cancelled. */
+    importFiles(): Promise<KeyImportResult | null>
+    importFolder(): Promise<KeyImportResult | null>
+    importText(label: string, privateKey: string): Promise<SshKey | null>
+    generate(opts: { label: string; type: 'ed25519' | 'rsa'; bits?: number; passphrase?: string; rememberPassphrase?: boolean }): Promise<SshKey>
+    rename(id: string, label: string): Promise<void>
+    delete(id: string): Promise<void>
+    forgetPassphrase(id: string): Promise<void>
+    /** OpenSSH public key line (not secret). */
+    publicKey(id: string): Promise<string>
+  }
+  identities: {
+    save(input: IdentityInput, password: PasswordChange): Promise<Identity>
+    delete(id: string): Promise<void>
+  }
+  integrations: {
+    save(input: IntegrationInput, secret?: string): Promise<Integration>
+    delete(id: string): Promise<void>
+    sync(id: string): Promise<SyncResult>
   }
 }

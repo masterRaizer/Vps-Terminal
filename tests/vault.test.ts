@@ -97,7 +97,7 @@ describe('importHosts', () => {
     expect(r.errors).toHaveLength(2)
     const hosts = svc.snapshot().hosts
     const a = hosts.find((h) => h.label === 'VPS A')!
-    expect(a).toMatchObject({ auth: 'key', notes: 'Ключ: id_ed25519', hasPassword: false })
+    expect(a).toMatchObject({ auth: 'key', keyHint: 'id_ed25519', hasPassword: false })
     const b = hosts.find((h) => h.address === '198.51.100.2')!
     expect(svc.snapshot().groups.find((g) => g.id === b.groupId)?.name).toBe('Lab')
     expect((await importHosts(data, svc)).added).toBe(0)

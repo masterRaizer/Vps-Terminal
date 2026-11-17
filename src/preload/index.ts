@@ -27,6 +27,25 @@ const api: VpsApi = {
     saveGroup: (group) => ipcRenderer.invoke(IPC.vaultSaveGroup, group),
     deleteGroup: (id) => ipcRenderer.invoke(IPC.vaultDeleteGroup, id),
     importHosts: () => ipcRenderer.invoke(IPC.vaultImportHosts)
+  },
+  keys: {
+    importFiles: () => ipcRenderer.invoke(IPC.keysImportFiles),
+    importFolder: () => ipcRenderer.invoke(IPC.keysImportFolder),
+    importText: (label, text) => ipcRenderer.invoke(IPC.keysImportText, label, text),
+    generate: (opts) => ipcRenderer.invoke(IPC.keysGenerate, opts),
+    rename: (id, label) => ipcRenderer.invoke(IPC.keysRename, id, label),
+    delete: (id) => ipcRenderer.invoke(IPC.keysDelete, id),
+    forgetPassphrase: (id) => ipcRenderer.invoke(IPC.keysForgetPassphrase, id),
+    publicKey: (id) => ipcRenderer.invoke(IPC.keysPublic, id)
+  },
+  identities: {
+    save: (input, password) => ipcRenderer.invoke(IPC.identitySave, input, password),
+    delete: (id) => ipcRenderer.invoke(IPC.identityDelete, id)
+  },
+  integrations: {
+    save: (input, secret) => ipcRenderer.invoke(IPC.integrationSave, input, secret),
+    delete: (id) => ipcRenderer.invoke(IPC.integrationDelete, id),
+    sync: (id) => ipcRenderer.invoke(IPC.integrationSync, id)
   }
 }
 

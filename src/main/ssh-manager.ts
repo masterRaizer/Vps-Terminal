@@ -38,7 +38,8 @@ export class SshManager {
 
   constructor(private readonly events: SshManagerEvents) {}
 
-  connect(req: ConnectRequest): string {
+  /** `privateKey`/`passphrase` are main-only: they never come from the renderer. */
+  connect(req: ConnectRequest & { privateKey?: string; passphrase?: string }): string {
     const sessionId = randomUUID()
     const client = new Client()
     const session: Session = { client, decoder: new TextDecoder('utf-8') }
@@ -81,6 +82,8 @@ export class SshManager {
         port: req.port,
         username: req.username,
         password: req.password,
+        privateKey: req.privateKey,
+        passphrase: req.passphrase,
         agent: req.agent || req.agentForward ? defaultAgent() : undefined,
         agentForward: Boolean(req.agentForward && defaultAgent()),
         tryKeyboard: Boolean(req.password),

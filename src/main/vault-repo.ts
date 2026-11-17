@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { DEFAULT_HOST_OPTIONS, type AuthMethod, type Group, type GroupInput, type Host, type HostInput, type HostOptions } from '@shared/vault'
+import { DEFAULT_HOST_OPTIONS, type AuthMethod, type CountrySource, type Group, type GroupInput, type Host, type HostInput, type HostOptions } from '@shared/vault'
 import type { Db } from './db'
 
 interface HostRow {
@@ -17,6 +17,12 @@ interface HostRow {
   notes: string
   has_password: number
   options: string
+  country: string | null
+  country_source: CountrySource
+  identity_id: string | null
+  key_hint: string | null
+  source: string | null
+  external_id: string | null
   created_at: number
   updated_at: number
   last_connected_at: number | null
@@ -45,6 +51,12 @@ const toHost = (r: HostRow): Host => ({
   favorite: r.favorite === 1,
   notes: r.notes,
   options: parseOptions(r.options),
+  country: r.country,
+  countrySource: r.country_source,
+  identityId: r.identity_id,
+  keyHint: r.key_hint,
+  source: r.source,
+  externalId: r.external_id,
   hasPassword: r.has_password === 1,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
@@ -102,6 +114,12 @@ function safeTags(json: string): string[] {
 }
 
 const COLOR_RE = /^#[0-9a-f]{6}$/i
+
+export function validCountry(v: unknown): string | null {
+  if (v === undefined || v === null || v === '') return null
+  if (typeof v !== 'string' || !/^[A-Za-z]{2}$/.test(v)) throw new Error('Страна: двухбуквенный код ISO')
+  return v.toUpperCase()
+}
 const str = (v: unknown, field: string, max: number, required = false): string => {
   if (v === undefined || v === null) v = ''
   if (typeof v !== 'string') throw new Error(`${field}: ожидается строка`)
@@ -146,7 +164,11 @@ export function validateHostInput(raw: unknown): HostInput {
     tags,
     favorite: r.favorite === true,
     notes: str(r.notes, 'Заметки', 4000),
-    options: validateOptions(r.options)
+    options: validateOptions(r.options),
+    country: validCountry(r.country),
+    countrySource: r.countrySource === 'manual' || r.countrySource === 'panel' ? r.countrySource : 'auto',
+    identityId: optId(r.identityId, 'Профиль доступа'),
+    keyHint: r.keyHint ? str(r.keyHint, 'Подсказка ключа', 200) || null : null
   }
 }
 
@@ -179,6 +201,9 @@ export class VaultRepo {
 
   saveHost(input: HostInput): Host {
     if (input.groupId && !this.groupExists(input.groupId)) throw new Error('Группа не найдена')
+    if (input.identityId && !this.db.prepare('SELECT 1 FROM identities WHERE id = ?').get(input.identityId)) throw new Error('Профиль доступа не найден')
+    if (input.keyId && !this.db.prepare('SELECT 1 FROM ssh_keys WHERE id = ?').get(input.keyId)) throw new Error('Ключ не найден')
+    const prev = input.id ? this.getHost(input.id) : null
     const t = this.now()
     const values = {
       label: input.label,
@@ -193,26 +218,51 @@ export class VaultRepo {
       favorite: input.favorite ? 1 : 0,
       notes: input.notes,
       options: JSON.stringify(input.options ?? DEFAULT_HOST_OPTIONS),
+      country: input.country !== undefined ? input.country : (prev?.country ?? null),
+      country_source: input.countrySource ?? prev?.countrySource ?? 'auto',
+      identity_id: input.identityId !== undefined ? input.identityId : (prev?.identityId ?? null),
+      key_hint: input.keyHint !== undefined ? input.keyHint : (prev?.keyHint ?? null),
       t
     }
-    if (input.id && this.getHost(input.id)) {
+    if (prev) {
       this.db
         .prepare(
           `UPDATE hosts SET label=@label, address=@address, port=@port, username=@username, auth=@auth,
              key_id=@key_id, group_id=@group_id, color=@color, tags=@tags, favorite=@favorite, notes=@notes,
-             options=@options, updated_at=@t WHERE id=@id`
+             options=@options, country=@country, country_source=@country_source, identity_id=@identity_id,
+             key_hint=@key_hint, updated_at=@t WHERE id=@id`
         )
-        .run({ ...values, id: input.id })
-      return this.getHost(input.id)!
+        .run({ ...values, id: prev.id })
+      return this.getHost(prev.id)!
     }
     const id = input.id ?? randomUUID()
     this.db
       .prepare(
-        `INSERT INTO hosts (id,label,address,port,username,auth,key_id,group_id,color,tags,favorite,notes,options,created_at,updated_at)
-         VALUES (@id,@label,@address,@port,@username,@auth,@key_id,@group_id,@color,@tags,@favorite,@notes,@options,@t,@t)`
+        `INSERT INTO hosts (id,label,address,port,username,auth,key_id,group_id,color,tags,favorite,notes,options,country,country_source,identity_id,key_hint,created_at,updated_at)
+         VALUES (@id,@label,@address,@port,@username,@auth,@key_id,@group_id,@color,@tags,@favorite,@notes,@options,@country,@country_source,@identity_id,@key_hint,@t,@t)`
       )
       .run({ ...values, id })
     return this.getHost(id)!
+  }
+
+  setCountry(id: string, country: string | null, source: CountrySource): void {
+    this.db.prepare('UPDATE hosts SET country = ?, country_source = ? WHERE id = ?').run(country, source, id)
+  }
+
+  /** Marks a host as managed by an integration. */
+  setSource(id: string, source: string | null, externalId: string | null): void {
+    this.db.prepare('UPDATE hosts SET source = ?, external_id = ? WHERE id = ?').run(source, externalId, id)
+  }
+
+  hostsBySource(source: string): Host[] {
+    return (this.db.prepare('SELECT * FROM hosts WHERE source = ?').all(source) as HostRow[]).map(toHost)
+  }
+
+  /** Binds hosts waiting for a key with this file name; returns how many were bound. */
+  bindKeyHint(hint: string, keyId: string): number {
+    return this.db
+      .prepare("UPDATE hosts SET key_id = ?, auth = 'key' WHERE key_id IS NULL AND lower(key_hint) = lower(?)")
+      .run(keyId, hint).changes
   }
 
   setHasPassword(id: string, has: boolean): void {

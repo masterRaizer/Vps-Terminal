@@ -9,10 +9,23 @@ import { createSecretStore } from './secrets'
 import { VaultRepo } from './vault-repo'
 import { VaultService } from './vault-service'
 import { importHosts } from './import-hosts'
+import { CatalogRepo } from './catalog-repo'
+import { DataKeyCipher } from './key-crypto'
+import { KeyService } from './key-service'
+import { GeoIp } from './geoip'
+import { RemnawaveSync } from './remnawave'
 
 const APP_NAME = 'Vps Terminal SSH'
 let mainWindow: BrowserWindow | null = null
 let vault: VaultService
+let keys: KeyService
+let catalog: CatalogRepo
+let remnawave: RemnawaveSync
+
+const str = (v: unknown, name: string, max = 512): string => {
+  if (typeof v !== 'string' || v.length > max) throw new Error(`Неверное поле: ${name}`)
+  return v
+}
 const pendingHostKeys = new Map<string, (accept: boolean) => void>()
 
 const ssh = new SshManager({
@@ -88,20 +101,25 @@ function registerIpc(): void {
     const r = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>
     if (typeof r.hostId !== 'string') throw new Error('Неверный id хоста')
     if (r.password !== undefined && typeof r.password !== 'string') throw new Error('Неверный пароль')
-    const { host, password } = await vault.resolveForConnect(r.hostId)
-    const req: ConnectRequest = {
-      host: host.address,
-      port: host.port,
-      username: host.username,
-      password: host.auth === 'password' ? ((r.password as string | undefined) ?? password ?? undefined) : undefined,
-      agent: host.auth === 'agent',
-      agentForward: host.options.agentForward,
-      env: host.options.env,
+    if (r.passphrase !== undefined && typeof r.passphrase !== 'string') throw new Error('Неверная парольная фраза')
+    const c = await vault.resolveForConnect(r.hostId, {
+      password: r.password as string | undefined,
+      passphrase: r.passphrase as string | undefined,
+      rememberPassphrase: r.rememberPassphrase === true
+    })
+    vault.markConnected(c.host.id)
+    return ssh.connect({
+      host: c.host.address,
+      port: c.host.port,
+      username: c.username,
+      password: c.password ?? undefined,
+      privateKey: c.privateKey,
+      passphrase: c.passphrase,
+      agent: c.agent,
+      agentForward: c.host.options.agentForward,
+      env: c.host.options.env,
       ...validateGeometry(r)
-    }
-    if (host.auth === 'key') throw new Error('Вход по ключу появится на шаге 3')
-    vault.markConnected(host.id)
-    return ssh.connect(req)
+    })
   })
 
   ipcMain.handle(IPC.vaultSnapshot, () => vault.snapshot())
@@ -125,8 +143,57 @@ function registerIpc(): void {
     } catch {
       throw new Error('Файл не является корректным JSON')
     }
-    return importHosts(data, vault)
+    const res = await importHosts(data, vault)
+    await vault.backfillCountries()
+    return res
   })
+
+  ipcMain.handle(IPC.keysImportFiles, async () => {
+    if (!mainWindow) return null
+    const pick = await dialog.showOpenDialog(mainWindow, { title: 'Импорт ключей', properties: ['openFile', 'multiSelections', 'showHiddenFiles'] })
+    return pick.canceled ? null : keys.importFiles(pick.filePaths)
+  })
+  ipcMain.handle(IPC.keysImportFolder, async () => {
+    if (!mainWindow) return null
+    const pick = await dialog.showOpenDialog(mainWindow, { title: 'Папка с ключами', properties: ['openDirectory', 'showHiddenFiles'] })
+    return pick.canceled || !pick.filePaths[0] ? null : keys.importFolder(pick.filePaths[0])
+  })
+  ipcMain.handle(IPC.keysImportText, (_e, label: unknown, text: unknown) => keys.addKey(str(label, 'название', 120), str(text, 'ключ', 64 * 1024)))
+  ipcMain.handle(IPC.keysGenerate, (_e, raw: unknown) => {
+    const o = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>
+    return keys.generate({
+      label: str(o.label ?? '', 'название', 120),
+      type: o.type === 'rsa' ? 'rsa' : 'ed25519',
+      bits: o.bits === undefined ? undefined : Number(o.bits),
+      passphrase: o.passphrase ? str(o.passphrase, 'фраза', 1024) : undefined,
+      rememberPassphrase: o.rememberPassphrase === true
+    })
+  })
+  ipcMain.handle(IPC.keysRename, (_e, id: unknown, label: unknown) => {
+    const l = str(label, 'название', 120).trim()
+    if (!l) throw new Error('Название не может быть пустым')
+    catalog.renameKey(str(id, 'id', 64), l)
+  })
+  ipcMain.handle(IPC.keysDelete, (_e, id: unknown) => keys.deleteKey(str(id, 'id', 64)))
+  ipcMain.handle(IPC.keysForgetPassphrase, (_e, id: unknown) => keys.forgetPassphrase(str(id, 'id', 64)))
+  ipcMain.handle(IPC.keysPublic, (_e, id: unknown) => keys.publicKeyOf(str(id, 'id', 64)))
+  ipcMain.handle(IPC.identitySave, (_e, input: unknown, password: unknown) => {
+    if (password !== undefined && password !== null && typeof password !== 'string') throw new Error('Неверный пароль')
+    const i = (typeof input === 'object' && input !== null ? input : {}) as Record<string, unknown>
+    return keys.saveIdentity(
+      {
+        id: typeof i.id === 'string' ? i.id : undefined,
+        label: typeof i.label === 'string' ? i.label : '',
+        username: typeof i.username === 'string' ? i.username : '',
+        keyId: typeof i.keyId === 'string' && i.keyId ? i.keyId : null
+      },
+      password as string | null | undefined
+    )
+  })
+  ipcMain.handle(IPC.identityDelete, (_e, id: unknown) => keys.deleteIdentity(str(id, 'id', 64)))
+  ipcMain.handle(IPC.integrationSave, (_e, input: unknown, secret: unknown) => remnawave.save(input, secret))
+  ipcMain.handle(IPC.integrationDelete, (_e, id: unknown) => remnawave.remove(str(id, 'id', 64)))
+  ipcMain.handle(IPC.integrationSync, (_e, id: unknown) => remnawave.sync(str(id, 'id', 64)))
 
   ipcMain.on(IPC.sshWrite, (_e, id: unknown, data: unknown) => {
     if (typeof id === 'string' && typeof data === 'string') ssh.write(id, data)
@@ -159,7 +226,7 @@ if (!app.requestSingleInstanceLock()) {
     mainWindow?.focus()
   })
 
-  void app.whenReady().then(() => {
+  void app.whenReady().then(async () => {
     // Strict CSP for the packaged renderer (dev server needs HMR, so only in prod).
     if (app.isPackaged) {
       session.defaultSession.webRequest.onHeadersReceived((details, cb) => {
@@ -175,7 +242,15 @@ if (!app.requestSingleInstanceLock()) {
     }
     session.defaultSession.setPermissionRequestHandler((_wc, _perm, cb) => cb(false))
     const db = openDb(join(app.getPath('userData'), 'vault.db'))
-    vault = new VaultService(new VaultRepo(db), createSecretStore())
+    const secrets = createSecretStore()
+    const repo = new VaultRepo(db)
+    catalog = new CatalogRepo(db)
+    const geoDir = app.isPackaged ? join(process.resourcesPath, 'geoip') : join(app.getAppPath(), 'resources', 'geoip')
+    const geo = new GeoIp(geoDir)
+    keys = new KeyService(catalog, repo, new DataKeyCipher(secrets), secrets)
+    vault = new VaultService(repo, secrets, { catalog, keys, geo })
+    remnawave = new RemnawaveSync(catalog, repo, secrets, geo)
+    await vault.backfillCountries().catch((e) => console.warn('GeoIP backfill failed:', e))
     registerIpc()
     createWindow()
     app.on('activate', () => {
