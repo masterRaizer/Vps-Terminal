@@ -22,21 +22,6 @@ function Placeholder({ toolbar, title, icon, heading, text }: { toolbar: ReactNo
   )
 }
 
-export const KeychainPage = () => (
-  <Placeholder
-    toolbar={
-      <>
-        <SplitButton icon={<IconPlus size={18} />} label="Новый ключ" disabled title="Шаг 3" />
-        <ToolButton icon={<IconCertificate size={18} />} label="Сертификат" disabled />
-      </>
-    }
-    title="Ключи"
-    icon={<IconKey size={26} />}
-    heading="Ключей пока нет"
-    text="Импорт OpenSSH/PEM/PPK, генерация ed25519 и RSA, профили с логином и паролем — шаг 3."
-  />
-)
-
 export const ForwardingPage = () => (
   <Placeholder
     toolbar={<SplitButton icon={<IconPlus size={18} />} label="Новое правило" disabled title="Шаг 4" />}

@@ -1,16 +1,22 @@
 import { create } from 'zustand'
-import type { Group, GroupInput, Host, HostInput, PasswordChange } from '@shared/vault'
+import type { Group, GroupInput, Host, HostInput, Identity, Integration, PasswordChange, SshKey } from '@shared/vault'
 import { errorText } from '@/lib/errors'
 
 export type Editing =
   | { kind: 'host'; id?: string; groupId?: string | null }
   | { kind: 'group'; id?: string; parentId?: string | null }
   | { kind: 'quick'; host: string; port: number; username: string }
+  | { kind: 'key'; id?: string; mode?: 'generate' | 'paste' }
+  | { kind: 'identity'; id?: string }
+  | { kind: 'integration'; id?: string }
   | null
 
 interface VaultState {
   hosts: Host[]
   groups: Group[]
+  keys: SshKey[]
+  identities: Identity[]
+  integrations: Integration[]
   secretsPersistent: boolean
   loaded: boolean
   error?: string
@@ -38,6 +44,9 @@ async function wrap<T>(p: Promise<T>): Promise<T> {
 export const useVault = create<VaultState>((set, get) => ({
   hosts: [],
   groups: [],
+  keys: [],
+  identities: [],
+  integrations: [],
   secretsPersistent: true,
   loaded: false,
   currentGroupId: null,
@@ -47,7 +56,16 @@ export const useVault = create<VaultState>((set, get) => ({
   load: async () => {
     try {
       const s = await window.api.vault.snapshot()
-      set({ hosts: s.hosts, groups: s.groups, secretsPersistent: s.secretsPersistent, loaded: true, error: undefined })
+      set({
+        hosts: s.hosts,
+        groups: s.groups,
+        keys: s.keys,
+        identities: s.identities,
+        integrations: s.integrations,
+        secretsPersistent: s.secretsPersistent,
+        loaded: true,
+        error: undefined
+      })
     } catch (e) {
       set({ loaded: true, error: errorText(e) })
     }
@@ -99,4 +117,15 @@ export function groupPath(id: string | null, groups: Group[]): Group[] {
     cur = g.parentId
   }
   return path
+}
+
+/** Runs an IPC call, strips Electron's error prefix and reloads the vault afterwards. */
+export async function vaultCall<T>(p: Promise<T>): Promise<T> {
+  try {
+    return await p
+  } catch (e) {
+    throw new Error(errorText(e))
+  } finally {
+    await useVault.getState().load()
+  }
 }

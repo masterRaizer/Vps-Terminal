@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { useSessions } from '@/store/sessions'
 import { useVault } from '@/store/vault'
 import { PasswordPrompt } from './components/PasswordPrompt'
+import { PassphrasePrompt } from './components/PassphrasePrompt'
 import { TopBar } from './components/TopBar'
 import { NavSidebar } from './components/NavSidebar'
 import { TerminalView } from './components/TerminalView'
@@ -9,7 +10,8 @@ import { TermSidePanel } from './components/TermSidePanel'
 import { HostKeyDialog } from './components/HostKeyDialog'
 import { StatusBar } from './components/StatusBar'
 import { HostsPage } from './pages/HostsPage'
-import { ForwardingPage, KeychainPage, KnownHostsPage, LogsPage, SnippetsPage } from './pages/SectionPages'
+import { ForwardingPage, KnownHostsPage, LogsPage, SnippetsPage } from './pages/SectionPages'
+import { KeychainPage } from './pages/KeychainPage'
 import { SftpPage } from './pages/SftpPage'
 
 const PAGES = {
@@ -51,6 +53,7 @@ export function App() {
       <StatusBar />
       <HostKeyDialog />
       <PasswordPrompt />
+      <PassphrasePrompt />
     </div>
   )
 }

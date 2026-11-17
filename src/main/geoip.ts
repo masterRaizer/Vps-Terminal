@@ -7,6 +7,7 @@ import { join } from 'node:path'
 export class GeoIp {
   private v4?: { starts: Uint32Array; codes: Buffer }
   private v6?: { starts: BigUint64Array; codes: Buffer }
+  private warned = false
 
   constructor(private readonly dir: string) {}
 
@@ -49,6 +50,13 @@ export class GeoIp {
 
   /** Resolves a hostname locally (system DNS) and looks the first address up. */
   async countryOf(address: string): Promise<string | null> {
+    try {
+      this.load()
+    } catch (e) {
+      if (!this.warned) console.warn(`GeoIP недоступен (${this.dir}): ${(e as Error).message}`)
+      this.warned = true
+      return null
+    }
     if (isIP(address)) return this.countryOfIp(address)
     try {
       const { address: ip } = await dnsLookup(address)

@@ -1,4 +1,5 @@
 import { join } from 'node:path'
+import { existsSync } from 'node:fs'
 import { readFile, stat } from 'node:fs/promises'
 import { app, BrowserWindow, dialog, ipcMain, session, shell } from 'electron'
 import { IPC, type AppInfo, type ConnectRequest, type HostKeyPrompt } from '@shared/ipc'
@@ -245,7 +246,9 @@ if (!app.requestSingleInstanceLock()) {
     const secrets = createSecretStore()
     const repo = new VaultRepo(db)
     catalog = new CatalogRepo(db)
-    const geoDir = app.isPackaged ? join(process.resourcesPath, 'geoip') : join(app.getAppPath(), 'resources', 'geoip')
+    const geoDir = app.isPackaged
+      ? join(process.resourcesPath, 'geoip')
+      : [join(app.getAppPath(), 'resources', 'geoip'), join(__dirname, '..', '..', 'resources', 'geoip')].find((d) => existsSync(join(d, 'country-v4.bin'))) ?? ''
     const geo = new GeoIp(geoDir)
     keys = new KeyService(catalog, repo, new DataKeyCipher(secrets), secrets)
     vault = new VaultService(repo, secrets, { catalog, keys, geo })

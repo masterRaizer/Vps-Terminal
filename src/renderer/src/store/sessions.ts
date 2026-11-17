@@ -27,6 +27,9 @@ export interface Tab {
   attempt: number
   /** One-shot password for the next connect; cleared as soon as it is sent to main. */
   pendingPassword?: string
+  /** One-shot key passphrase for the next connect. */
+  pendingPassphrase?: string
+  rememberPassphrase?: boolean
 }
 
 export type Section = 'hosts' | 'keychain' | 'forwarding' | 'snippets' | 'knownhosts' | 'logs'
@@ -70,6 +73,7 @@ interface State extends Prefs {
   patchTab(id: string, patch: Partial<Tab>): void
   takePassword(id: string): string | undefined
   reconnect(id: string, password?: string): void
+  retryWithPassphrase(id: string, passphrase: string, remember: boolean): void
   showVault(section?: Section): void
   showSftp(): void
   newConnection(): void
@@ -175,6 +179,11 @@ export const useSessions = create<State>((set, get) => ({
       status: 'idle',
       message: undefined
     })
+  },
+  retryWithPassphrase: (id, passphrase, remember) => {
+    const tab = get().tabs.find((t) => t.id === id)
+    if (!tab) return
+    get().patchTab(id, { pendingPassphrase: passphrase, rememberPassphrase: remember, attempt: tab.attempt + 1, sessionId: undefined, status: 'idle', message: undefined })
   },
   showVault: (section) => set((s) => ({ view: 'vault', section: section ?? s.section })),
   showSftp: () => set({ view: 'sftp' }),

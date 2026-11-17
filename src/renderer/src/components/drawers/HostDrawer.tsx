@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { DEFAULT_HOST_OPTIONS, HOST_COLORS, type AuthMethod, type Host, type HostInput, type PasswordChange } from '@shared/vault'
+import { DEFAULT_HOST_OPTIONS, HOST_COLORS, type Host, type HostInput, type PasswordChange } from '@shared/vault'
 import { groupPath, useVault } from '@/store/vault'
+import { countryName, countryOptions } from '@/lib/flags'
+import { Flag } from '../Flag'
 import { connectHost } from '@/lib/connectHost'
 import { TERM_THEMES, termThemeById } from '@/lib/termThemes'
 import { useSessions } from '@/store/sessions'
@@ -16,6 +18,7 @@ import {
   IconDots,
   IconEye,
   IconEyeOff,
+  IconGlobe,
   IconGroup,
   IconKey,
   IconLock,
@@ -35,8 +38,8 @@ function emptyHost(groupId: string | null): HostInput {
 }
 
 const toInput = (h: Host): HostInput => {
-  const { id, label, address, port, username, auth, keyId, groupId, color, tags, favorite, notes, options } = h
-  return { id, label, address, port, username, auth, keyId, groupId, color, tags, favorite, notes, options }
+  const { id, label, address, port, username, auth, keyId, groupId, color, tags, favorite, notes, options, identityId } = h
+  return { id, label, address, port, username, auth, keyId, groupId, color, tags, favorite, notes, options, identityId }
 }
 
 const envToText = (env: Record<string, string>): string => Object.entries(env).map(([k, v]) => `${k}=${v}`).join('\n')
@@ -50,7 +53,7 @@ function textToEnv(text: string): Record<string, string> {
 }
 
 export function HostDrawer({ hostId, groupId }: { hostId?: string; groupId?: string | null }) {
-  const { hosts, groups, secretsPersistent, saveHost, deleteHost, edit } = useVault()
+  const { hosts, groups, keys, identities, secretsPersistent, saveHost, deleteHost, edit } = useVault()
   const existing: Host | undefined = hostId ? hosts.find((h) => h.id === hostId) : undefined
   const [form, setForm] = useState<HostInput>(() => (existing ? toInput(existing) : emptyHost(groupId ?? null)))
   const [password, setPassword] = useState('')
@@ -65,6 +68,7 @@ export function HostDrawer({ hostId, groupId }: { hostId?: string; groupId?: str
   const addRef = useOutsideClose(addOpen, () => setAddOpen(false))
   const colorRef = useOutsideClose(colorOpen, () => setColorOpen(false))
   const globalTheme = useSessions((s) => s.termTheme)
+  const countries = useMemo(() => countryOptions(), [])
 
   const groupOptions = useMemo(
     () => [
@@ -78,7 +82,7 @@ export function HostDrawer({ hostId, groupId }: { hostId?: string; groupId?: str
   const setOpt = <K extends keyof HostInput['options']>(k: K, v: HostInput['options'][K]): void =>
     setForm((f) => ({ ...f, options: { ...f.options, [k]: v } }))
 
-  const valid = form.address.trim() !== '' && !/\s/.test(form.address.trim()) && form.username.trim() !== '' && form.port > 0 && form.port < 65536
+  const valid = form.address.trim() !== '' && !/\s/.test(form.address.trim()) && (form.username.trim() !== '' || Boolean(form.identityId)) && form.port > 0 && form.port < 65536
 
   const persist = async (change: PasswordChange = undefined): Promise<Host | null> => {
     if (!valid) return null
@@ -119,11 +123,6 @@ export function HostDrawer({ hostId, groupId }: { hostId?: string; groupId?: str
     const t = tagDraft.trim().replace(/,$/, '')
     if (t && !form.tags.includes(t)) set('tags', [...form.tags, t])
     setTagDraft('')
-  }
-
-  const pickAuth = async (a: AuthMethod): Promise<void> => {
-    setAddOpen(false)
-    set('auth', a)
   }
 
   const connect = async (): Promise<void> => {
@@ -193,6 +192,9 @@ export function HostDrawer({ hostId, groupId }: { hostId?: string; groupId?: str
                 <Tile tone={tileColor} size={48}>
                   <IconServer size={24} />
                 </Tile>
+                {(form.countrySource === 'manual' ? form.country : existing?.country) && (
+                  <Flag cc={form.countrySource === 'manual' ? form.country : existing?.country} size={20} className="tile-flag" />
+                )}
               </button>
               {colorOpen && (
                 <div className="popover swatch-pop">
@@ -223,6 +225,21 @@ export function HostDrawer({ hostId, groupId }: { hostId?: string; groupId?: str
             display={form.groupId ? undefined : <span className="ph">Родительская группа</span>}
             options={groupOptions}
             onPick={(v) => set('groupId', v || null)}
+          />
+          <PickerRow
+            icon={existing?.country && form.countrySource !== 'manual' ? <Flag cc={existing.country} size={20} /> : form.country ? <Flag cc={form.country} size={20} /> : <IconGlobe size={18} />}
+            placeholder="Страна"
+            value={form.countrySource === 'manual' ? (form.country ?? '') : ''}
+            display={
+              (form.countrySource === 'manual' ? form.country : existing?.country) ? (
+                <span>{countryName((form.countrySource === 'manual' ? form.country : existing?.country)!)}</span>
+              ) : (
+                <span className="ph">Страна — определится по IP</span>
+              )
+            }
+            right={<span className="picker-right">{form.countrySource === 'manual' ? 'вручную' : existing?.countrySource === 'panel' ? 'из панели' : 'по IP'}</span>}
+            options={[{ value: '', label: 'Определять по IP автоматически' }, ...countries.map((c) => ({ value: c.code, label: c.name, icon: <Flag cc={c.code} size={18} /> }))]}
+            onPick={(v) => setForm((f) => (v ? { ...f, country: v, countrySource: 'manual' } : { ...f, country: null, countrySource: 'auto' }))}
           />
           <label className="iinput tags-input">
             <span className="iinput-icon">
@@ -276,60 +293,94 @@ export function HostDrawer({ hostId, groupId }: { hostId?: string; groupId?: str
           </div>
           <hr />
           <h3 className="group-title">Учётные данные</h3>
-          <IconInput icon={<IconUser size={18} />} placeholder="Пользователь" value={form.username} onChange={(e) => set('username', e.target.value)} />
-          {form.auth === 'password' && (
-            <IconInput
-              icon={<IconLock size={18} />}
-              type={showPwd ? 'text' : 'password'}
-              placeholder={existing?.hasPassword ? '•••••••• сохранён' : 'Пароль (спросим при входе, если пусто)'}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              onBlur={() => void commitPassword()}
-              autoComplete="off"
-              right={
-                <span className="iinput-actions">
-                  <button type="button" className="icon-btn small" onClick={() => setShowPwd((v) => !v)} title={showPwd ? 'Скрыть' : 'Показать'}>
-                    {showPwd ? <IconEyeOff size={16} /> : <IconEye size={16} />}
-                  </button>
-                </span>
-              }
-            />
-          )}
-          {form.auth === 'agent' && (
-            <div className="cred-chip">
-              <IconAgent size={18} /> SSH-агент Windows
-              <button type="button" className="icon-btn small" onClick={() => set('auth', 'password')} title="Убрать">
+          {form.identityId ? (
+            <div className="cred-identity">
+              <PickerRow
+                icon={<IconUser size={18} />}
+                placeholder="Профиль доступа"
+                value={form.identityId}
+                options={identities.map((i) => ({ value: i.id, label: i.label, hint: i.username }))}
+                onPick={(v) => set('identityId', v)}
+                right={<span className="badge-soft">профиль</span>}
+              />
+              <button type="button" className="icon-btn small" onClick={() => set('identityId', null)} title="Использовать свои учётные данные">
                 <IconClose size={14} />
               </button>
             </div>
+          ) : (
+            <>
+              <IconInput icon={<IconUser size={18} />} placeholder="Пользователь" value={form.username} onChange={(e) => set('username', e.target.value)} />
+              {form.auth === 'password' && (
+                <IconInput
+                  icon={<IconLock size={18} />}
+                  type={showPwd ? 'text' : 'password'}
+                  placeholder={existing?.hasPassword ? '•••••••• сохранён' : 'Пароль (спросим при входе, если пусто)'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  onBlur={() => void commitPassword()}
+                  autoComplete="off"
+                  right={
+                    <span className="iinput-actions">
+                      <button type="button" className="icon-btn small" onClick={() => setShowPwd((v) => !v)} title={showPwd ? 'Скрыть' : 'Показать'}>
+                        {showPwd ? <IconEyeOff size={16} /> : <IconEye size={16} />}
+                      </button>
+                    </span>
+                  }
+                />
+              )}
+              {form.auth === 'key' && (
+                <PickerRow
+                  icon={<IconKey size={18} />}
+                  placeholder="Ключ"
+                  value={form.keyId ?? ''}
+                  display={form.keyId ? undefined : <span className="ph">{existing?.keyHint ? `Ждёт ключ «${existing.keyHint}»` : 'Выберите ключ'}</span>}
+                  options={keys.map((k) => ({ value: k.id, label: k.label, hint: k.type.toUpperCase() }))}
+                  onPick={(v) => set('keyId', v)}
+                />
+              )}
+              {form.auth === 'agent' && (
+                <div className="cred-chip">
+                  <IconAgent size={18} /> SSH-агент Windows
+                  <button type="button" className="icon-btn small" onClick={() => set('auth', 'password')} title="Убрать">
+                    <IconClose size={14} />
+                  </button>
+                </div>
+              )}
+            </>
           )}
           <div className="add-cred" ref={addRef}>
             <button type="button" className="add-cred-btn" onClick={() => setAddOpen((o) => !o)}>
-              <IconPlus size={16} /> Пароль, ключ, SSH-агент
+              <IconPlus size={16} /> Профиль, ключ, пароль, SSH-агент
             </button>
             {addOpen && (
               <div className="popover cred-pop">
-                <button type="button" className="pop-feature" disabled title="Шаг 3">
+                <button type="button" className="pop-feature" disabled={!identities.length} onClick={() => (setAddOpen(false), set('identityId', identities[0]?.id ?? null))}>
+                  <IconUser size={18} />
+                  <span className="pop-label">
+                    Профиль доступа
+                    <small>{identities.length ? 'Общий логин + пароль/ключ' : 'Создайте профиль в разделе «Ключи»'}</small>
+                  </span>
+                </button>
+                <hr />
+                <button type="button" disabled={!keys.length} className={!form.identityId && form.auth === 'key' ? 'on' : ''} onClick={() => (setAddOpen(false), setForm((f) => ({ ...f, identityId: null, auth: 'key', keyId: f.keyId ?? keys[0]?.id ?? null })))}>
                   <IconKey size={18} />
                   <span className="pop-label">
                     Ключ SSH
-                    <small>Импорт и генерация — шаг 3</small>
+                    {!keys.length && <small>Сначала импортируйте ключ</small>}
                   </span>
-                  <span className="pop-badge">Скоро</span>
                 </button>
-                <hr />
-                <button type="button" className={form.auth === 'password' ? 'on' : ''} onClick={() => void pickAuth('password')}>
+                <button type="button" className={!form.identityId && form.auth === 'password' ? 'on' : ''} onClick={() => (setAddOpen(false), setForm((f) => ({ ...f, identityId: null, auth: 'password' })))}>
                   <IconLock size={18} />
                   <span className="pop-label">Пароль</span>
                 </button>
-                <button type="button" className={form.auth === 'agent' ? 'on' : ''} onClick={() => void pickAuth('agent')}>
+                <button type="button" className={!form.identityId && form.auth === 'agent' ? 'on' : ''} onClick={() => (setAddOpen(false), setForm((f) => ({ ...f, identityId: null, auth: 'agent' })))}>
                   <IconAgent size={18} />
                   <span className="pop-label">SSH-агент</span>
                 </button>
               </div>
             )}
           </div>
-          {!secretsPersistent && form.auth === 'password' && <p className="hint warn">Диспетчер учётных данных недоступен: пароль хранится только до закрытия приложения.</p>}
+          {!secretsPersistent && !form.identityId && form.auth === 'password' && <p className="hint warn">Диспетчер учётных данных недоступен: пароль хранится только до закрытия приложения.</p>}
           <hr />
           <PickerRow
             icon={<IconAgent size={18} />}

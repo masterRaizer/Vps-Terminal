@@ -43,7 +43,7 @@ describe('KeyService', () => {
   })
 
   it('handles a passphrase-protected key: needs, rejects wrong, remembers right', async () => {
-    const pair = utils.generateKeyPairSync('ed25519', { passphrase: 's3cret', cipher: 'aes256-ctr' })
+    const pair = utils.generateKeyPairSync('ed25519', { passphrase: 's3cret', cipher: 'aes256-ctr', rounds: 16 })
     const k = (await keys.addKey('locked', pair.private))!
     expect(k).toMatchObject({ encrypted: true, fingerprint: null })
     await expect(keys.unlock(k.id)).rejects.toThrow(/\[\[NEED_PASSPHRASE:/)

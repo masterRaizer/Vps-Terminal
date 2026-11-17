@@ -8,6 +8,9 @@ import { Card, EmptyState, SplitButton, ToolButton } from '@/components/ui'
 import { HostDrawer } from '@/components/drawers/HostDrawer'
 import { GroupDrawer } from '@/components/drawers/GroupDrawer'
 import { QuickConnectDrawer } from '@/components/drawers/QuickConnectDrawer'
+import { IntegrationDrawer } from '@/components/drawers/IntegrationDrawer'
+import { Flag } from '@/components/Flag'
+import { vaultCall } from '@/store/vault'
 import {
   IconChevronRight,
   IconDownload,
@@ -17,6 +20,7 @@ import {
   IconGrid,
   IconPencil,
   IconPlus,
+  IconRefresh,
   IconServer,
   IconStar,
   IconTag,
@@ -24,7 +28,7 @@ import {
 } from '@/components/Icons'
 
 const matches = (h: Host, q: string): boolean =>
-  [h.label, h.address, h.username, ...h.tags].some((v) => v.toLowerCase().includes(q))
+  [h.label, h.address, h.username, h.country ?? '', ...h.tags].some((v) => v.toLowerCase().includes(q))
 
 export function HostsPage() {
   const v = useVault()
@@ -75,6 +79,20 @@ export function HostsPage() {
     else if (q) quickConnect()
   }
 
+  const [syncing, setSyncing] = useState<string | null>(null)
+  const syncIntegration = async (id: string): Promise<void> => {
+    setSyncing(id)
+    try {
+      const r = await vaultCall(window.api.integrations.sync(id))
+      setNotice(`Remnawave: нод ${r.total}, добавлено ${r.created}, обновлено ${r.updated}${r.missing ? `, пропало из панели ${r.missing}` : ''}`)
+    } catch (e) {
+      setNotice(`Синхронизация не удалась: ${(e as Error).message}`)
+    } finally {
+      setSyncing(null)
+    }
+  }
+  const integrationOf = (groupId: string) => v.integrations.find((i) => i.groupId === groupId)
+
   const runImport = async (): Promise<void> => {
     try {
       const r = await window.api.vault.importHosts()
@@ -91,6 +109,7 @@ export function HostsPage() {
       key={h.id}
       tone={h.color ?? undefined}
       icon={<IconServer size={22} />}
+      flag={h.country}
       title={h.label}
       subtitle={`ssh, ${h.username}${h.port !== 22 ? `, :${h.port}` : ''}${h.tags.length ? ` · ${h.tags.join(', ')}` : ''}`}
       selected={v.editing?.kind === 'host' && v.editing.id === h.id}
@@ -145,11 +164,13 @@ export function HostsPage() {
             menu={[
               { label: 'Новый хост', onClick: () => v.edit({ kind: 'host', groupId: v.currentGroupId }) },
               { label: 'Новая группа', onClick: () => v.edit({ kind: 'group', parentId: v.currentGroupId }) },
-              { label: 'Импорт hosts.json…', onClick: () => void runImport() }
+              { label: 'Импорт hosts.json…', onClick: () => void runImport() },
+              { label: 'Подключить панель Remnawave…', onClick: () => v.edit({ kind: 'integration' }) }
             ]}
           />
           <ToolButton icon={<IconTerminal size={18} />} label="Быстрое подключение" onClick={quickConnect} />
           <ToolButton icon={<IconDownload size={18} />} label="Импорт" onClick={() => void runImport()} />
+          <ToolButton icon={<IconRefresh size={18} />} label="Remnawave" onClick={() => v.edit(v.integrations[0] ? { kind: 'integration', id: v.integrations[0].id } : { kind: 'integration' })} />
           <span className="toolbar-spacer" />
           <ToolButton icon={listView ? <IconGrid size={18} /> : <IconList size={18} />} title={listView ? 'Плитка' : 'Список'} onClick={() => setListView((x) => !x)} />
           <ToolButton icon={<IconTag size={18} />} title="Фильтр по тегам" onClick={() => setShowTags((x) => !x)} disabled={!allTags.length} />
@@ -190,6 +211,11 @@ export function HostsPage() {
                       <button className="icon-btn small" title="Изменить группу" onClick={() => v.edit({ kind: 'group', id: g.id })}>
                         <IconPencil size={15} />
                       </button>
+                      {integrationOf(g.id) && (
+                        <button className={`btn-chip ${syncing ? 'spin' : ''}`} onClick={() => void syncIntegration(integrationOf(g.id)!.id)} disabled={Boolean(syncing)}>
+                          <IconRefresh size={14} /> {syncing ? 'Синхронизация…' : 'Синхронизировать с панелью'}
+                        </button>
+                      )}
                     </span>
                   ) : (
                     <button onClick={() => v.openGroup(g.id)}>{g.name}</button>
@@ -212,13 +238,14 @@ export function HostsPage() {
               <div className="card-grid">
                 {visibleGroups.map((g) => {
                   const n = countHostsDeep(g.id, v.groups, v.hosts)
+                  const integ = integrationOf(g.id)
                   return (
                     <Card
                       key={g.id}
                       tone={g.color ?? undefined}
                       icon={<IconGroup size={22} />}
                       title={g.name}
-                      subtitle={`${n} ${plural(n, 'хост', 'хоста', 'хостов')}`}
+                      subtitle={`${integ ? 'Remnawave · ' : ''}${n} ${plural(n, 'хост', 'хоста', 'хостов')}${integ?.lastError ? ' · ошибка синхронизации' : ''}`}
                       selected={editing?.kind === 'group' && editing.id === g.id}
                       onClick={() => {
                         setQuery('')
@@ -226,18 +253,34 @@ export function HostsPage() {
                         v.openGroup(g.id)
                       }}
                       trailing={
-                        <span
-                          role="button"
-                          tabIndex={0}
-                          className="icon-btn"
-                          title="Изменить"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            v.edit({ kind: 'group', id: g.id })
-                          }}
-                        >
-                          <IconPencil size={17} />
-                        </span>
+                        <>
+                          {integ && (
+                            <span
+                              role="button"
+                              tabIndex={0}
+                              className={`icon-btn ${syncing === integ.id ? 'spin' : ''}`}
+                              title="Синхронизировать с панелью"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                void syncIntegration(integ.id)
+                              }}
+                            >
+                              <IconRefresh size={17} />
+                            </span>
+                          )}
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            className="icon-btn"
+                            title="Изменить"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              v.edit(integ ? { kind: 'integration', id: integ.id } : { kind: 'group', id: g.id })
+                            }}
+                          >
+                            <IconPencil size={17} />
+                          </span>
+                        </>
                       }
                     />
                   )
@@ -271,6 +314,7 @@ export function HostsPage() {
 
       {editing?.kind === 'host' && <HostDrawer key={editing.id ?? 'new'} hostId={editing.id} groupId={editing.groupId} />}
       {editing?.kind === 'group' && <GroupDrawer key={editing.id ?? 'new'} groupId={editing.id} parentId={editing.parentId} />}
+      {editing?.kind === 'integration' && <IntegrationDrawer key="integration" id={editing.id} />}
       {editing?.kind === 'quick' && <QuickConnectDrawer key={`${editing.host}:${editing.port}`} initial={editing} />}
     </div>
   )

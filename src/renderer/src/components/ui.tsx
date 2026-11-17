@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState, type InputHTMLAttributes, type ReactNode } from 'react'
 import { IconChevronDown, IconCollapseRight } from './Icons'
+import { Flag } from './Flag'
 
 type Tone = 'blue' | 'orange' | 'green' | 'slate'
 const TONES: readonly string[] = ['blue', 'orange', 'green', 'slate']
@@ -23,6 +24,7 @@ export function Card(props: {
   onClick?: () => void
   trailing?: ReactNode
   badge?: ReactNode
+  flag?: string | null
 }) {
   return (
     <div
@@ -37,7 +39,10 @@ export function Card(props: {
         }
       }}
     >
-      <Tile tone={props.tone}>{props.icon}</Tile>
+      <span className="tile-wrap">
+        <Tile tone={props.tone}>{props.icon}</Tile>
+        {props.flag && <Flag cc={props.flag} size={20} className="tile-flag" />}
+      </span>
       <span className="card-text">
         <span className="card-title">
           {props.title}

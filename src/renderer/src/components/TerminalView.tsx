@@ -9,6 +9,7 @@ import { termRegistry } from '@/lib/termRegistry'
 import { DEFAULT_TERM_THEME, fontStack, termThemeById } from '@/lib/termThemes'
 import { FOCUS_TERM_SEARCH } from './TermSidePanel'
 import { errorText } from '@/lib/errors'
+import { usePassphrasePrompt } from './PassphrasePrompt'
 import { IconLock, IconRefresh } from './Icons'
 
 interface Props {
@@ -128,6 +129,10 @@ export function TerminalView({ tab, active }: Props) {
     if (!term) return
     const { patchTab, takePassword, log } = useSessions.getState()
     const password = takePassword(tab.id)
+    const cur = useSessions.getState().tabs.find((t) => t.id === tab.id)
+    const passphrase = cur?.pendingPassphrase
+    const rememberPassphrase = cur?.rememberPassphrase
+    if (passphrase) patchTab(tab.id, { pendingPassphrase: undefined, rememberPassphrase: undefined })
     let detach: (() => void) | undefined
     let cancelled = false
     const target = `${tab.params.username}@${tab.params.host}:${tab.params.port}`
@@ -136,7 +141,7 @@ export function TerminalView({ tab, active }: Props) {
     patchTab(tab.id, { status: 'connecting', message: undefined })
 
     const started = tab.hostId
-      ? window.api.ssh.connectHost({ hostId: tab.hostId, password, cols: term.cols, rows: term.rows })
+      ? window.api.ssh.connectHost({ hostId: tab.hostId, password, passphrase, rememberPassphrase, cols: term.cols, rows: term.rows })
       : window.api.ssh.connect({ ...tab.params, password, cols: term.cols, rows: term.rows })
     started
       .then((sessionId) => {
@@ -151,9 +156,12 @@ export function TerminalView({ tab, active }: Props) {
         if (early) log({ target, status: early.status, message: early.message })
       })
       .catch((e: unknown) => {
-        const message = errorText(e)
+        const raw = errorText(e)
+        const need = /\[\[(NEED|BAD)_PASSPHRASE:([^:\]]+):([^\]]*)\]\]\s*/.exec(raw)
+        const message = raw.replace(/\[\[[^\]]*\]\]\s*/, '')
         patchTab(tab.id, { status: 'error', message })
         log({ target, status: 'error', message })
+        if (need) usePassphrasePrompt.getState().ask({ tabId: tab.id, keyLabel: need[3], wrong: need[1] === 'BAD' })
       })
 
     return () => {

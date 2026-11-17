@@ -92,7 +92,7 @@ export function looksLikePrivateKey(text: string): boolean {
 }
 
 export function generateKey(type: 'ed25519' | 'rsa', opts: { bits?: number; comment?: string; passphrase?: string }): { private: string; public: string } {
-  const base = { comment: opts.comment, ...(opts.passphrase ? { passphrase: opts.passphrase, cipher: 'aes256-ctr' } : {}) }
+  const base = { comment: opts.comment, ...(opts.passphrase ? { passphrase: opts.passphrase, cipher: 'aes256-ctr', rounds: 16 } : {}) }
   return type === 'rsa'
     ? utils.generateKeyPairSync('rsa', { bits: opts.bits ?? 4096, ...base })
     : utils.generateKeyPairSync('ed25519', base)
