@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type { AuthMethod, Group, GroupInput, Host, HostInput } from '@shared/vault'
+import { DEFAULT_HOST_OPTIONS, type AuthMethod, type Group, type GroupInput, type Host, type HostInput, type HostOptions } from '@shared/vault'
 import type { Db } from './db'
 
 interface HostRow {
@@ -16,6 +16,7 @@ interface HostRow {
   favorite: number
   notes: string
   has_password: number
+  options: string
   created_at: number
   updated_at: number
   last_connected_at: number | null
@@ -43,6 +44,7 @@ const toHost = (r: HostRow): Host => ({
   tags: safeTags(r.tags),
   favorite: r.favorite === 1,
   notes: r.notes,
+  options: parseOptions(r.options),
   hasPassword: r.has_password === 1,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
@@ -57,6 +59,38 @@ const toGroup = (r: GroupRow): Group => ({
   createdAt: r.created_at,
   updatedAt: r.updated_at
 })
+
+function parseOptions(json: string): HostOptions {
+  try {
+    return validateOptions(JSON.parse(json))
+  } catch {
+    return { ...DEFAULT_HOST_OPTIONS }
+  }
+}
+
+const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/
+
+export function validateOptions(raw: unknown): HostOptions {
+  const r = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>
+  const env: Record<string, string> = {}
+  if (typeof r.env === 'object' && r.env !== null) {
+    const entries = Object.entries(r.env as Record<string, unknown>)
+    if (entries.length > 50) throw new Error('Слишком много переменных окружения')
+    for (const [k, v] of entries) {
+      if (!ENV_NAME.test(k)) throw new Error(`Переменная «${k}»: недопустимое имя`)
+      if (typeof v !== 'string' || v.length > 1024) throw new Error(`Переменная «${k}»: недопустимое значение`)
+      env[k] = v
+    }
+  }
+  const theme = r.termTheme
+  if (theme !== undefined && theme !== null && (typeof theme !== 'string' || !/^[a-z0-9-]{1,40}$/.test(theme))) throw new Error('Неверная тема')
+  return {
+    backspace: r.backspace === 'ctrl-h' ? 'ctrl-h' : 'del',
+    agentForward: r.agentForward === true,
+    env,
+    termTheme: (theme as string | null | undefined) ?? null
+  }
+}
 
 function safeTags(json: string): string[] {
   try {
@@ -111,7 +145,8 @@ export function validateHostInput(raw: unknown): HostInput {
     color: optColor(r.color),
     tags,
     favorite: r.favorite === true,
-    notes: str(r.notes, 'Заметки', 4000)
+    notes: str(r.notes, 'Заметки', 4000),
+    options: validateOptions(r.options)
   }
 }
 
@@ -157,6 +192,7 @@ export class VaultRepo {
       tags: JSON.stringify(input.tags),
       favorite: input.favorite ? 1 : 0,
       notes: input.notes,
+      options: JSON.stringify(input.options ?? DEFAULT_HOST_OPTIONS),
       t
     }
     if (input.id && this.getHost(input.id)) {
@@ -164,7 +200,7 @@ export class VaultRepo {
         .prepare(
           `UPDATE hosts SET label=@label, address=@address, port=@port, username=@username, auth=@auth,
              key_id=@key_id, group_id=@group_id, color=@color, tags=@tags, favorite=@favorite, notes=@notes,
-             updated_at=@t WHERE id=@id`
+             options=@options, updated_at=@t WHERE id=@id`
         )
         .run({ ...values, id: input.id })
       return this.getHost(input.id)!
@@ -172,8 +208,8 @@ export class VaultRepo {
     const id = input.id ?? randomUUID()
     this.db
       .prepare(
-        `INSERT INTO hosts (id,label,address,port,username,auth,key_id,group_id,color,tags,favorite,notes,created_at,updated_at)
-         VALUES (@id,@label,@address,@port,@username,@auth,@key_id,@group_id,@color,@tags,@favorite,@notes,@t,@t)`
+        `INSERT INTO hosts (id,label,address,port,username,auth,key_id,group_id,color,tags,favorite,notes,options,created_at,updated_at)
+         VALUES (@id,@label,@address,@port,@username,@auth,@key_id,@group_id,@color,@tags,@favorite,@notes,@options,@t,@t)`
       )
       .run({ ...values, id })
     return this.getHost(id)!

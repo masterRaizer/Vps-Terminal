@@ -9,6 +9,10 @@ export interface ConnectRequest {
   password?: string
   /** Authenticate with the system SSH agent (Windows OpenSSH agent / SSH_AUTH_SOCK). */
   agent?: boolean
+  /** Forward the agent to the server (requires an agent). */
+  agentForward?: boolean
+  /** Environment variables requested for the shell. */
+  env?: Record<string, string>
   cols: number
   rows: number
 }

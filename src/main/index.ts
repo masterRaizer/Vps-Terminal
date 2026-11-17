@@ -95,6 +95,8 @@ function registerIpc(): void {
       username: host.username,
       password: host.auth === 'password' ? ((r.password as string | undefined) ?? password ?? undefined) : undefined,
       agent: host.auth === 'agent',
+      agentForward: host.options.agentForward,
+      env: host.options.env,
       ...validateGeometry(r)
     }
     if (host.auth === 'key') throw new Error('Вход по ключу появится на шаге 3')

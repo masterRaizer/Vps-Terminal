@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { DEFAULT_HOST_OPTIONS } from '@shared/vault'
 import { useSessions } from '@/store/sessions'
 import { useVault } from '@/store/vault'
 import { connectHost } from '@/lib/connectHost'
@@ -23,7 +24,7 @@ export function QuickConnectDrawer({ initial }: { initial: { host: string; port:
     try {
       if (saveIt) {
         const saved = await useVault.getState().saveHost(
-          { label: host.trim(), address: host.trim(), port: p, username: username.trim(), auth: 'password', keyId: null, groupId: useVault.getState().currentGroupId, color: null, tags: [], favorite: false, notes: '' },
+          { label: host.trim(), address: host.trim(), port: p, username: username.trim(), auth: 'password', keyId: null, groupId: useVault.getState().currentGroupId, color: null, tags: [], favorite: false, notes: '', options: { ...DEFAULT_HOST_OPTIONS } },
           password || undefined
         )
         connectHost(saved)

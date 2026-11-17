@@ -1,4 +1,4 @@
-import type { HostInput } from '@shared/vault'
+import { DEFAULT_HOST_OPTIONS, type HostInput } from '@shared/vault'
 import type { VaultService } from './vault-service'
 
 export interface ImportResult {
@@ -55,7 +55,8 @@ export async function importHosts(data: unknown, vault: VaultService): Promise<I
         color: null,
         tags: Array.isArray(r.tags) ? (r.tags.filter((t) => typeof t === 'string') as string[]) : [],
         favorite: false,
-        notes: key ? `Ключ: ${key}` : ''
+        notes: key ? `Ключ: ${key}` : '',
+        options: { ...DEFAULT_HOST_OPTIONS }
       }
       await vault.saveHost(input, undefined)
       seen.add(id)

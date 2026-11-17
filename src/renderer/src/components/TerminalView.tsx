@@ -6,7 +6,7 @@ import { WebglAddon } from '@xterm/addon-webgl'
 import { useSessions, type Tab } from '@/store/sessions'
 import { attachData, claimStatus } from '@/lib/sessionBus'
 import { termRegistry } from '@/lib/termRegistry'
-import { DEFAULT_TERM_THEME, termThemeById } from '@/lib/termThemes'
+import { DEFAULT_TERM_THEME, fontStack, termThemeById } from '@/lib/termThemes'
 import { FOCUS_TERM_SEARCH } from './TermSidePanel'
 import { errorText } from '@/lib/errors'
 import { IconLock, IconRefresh } from './Icons'
@@ -23,19 +23,23 @@ export function TerminalView({ tab, active }: Props) {
   const termRef = useRef<Terminal | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
   const sessionRef = useRef<string | undefined>(undefined)
-  const themeId = useSessions((s) => s.termTheme)
+  const globalTheme = useSessions((s) => s.termTheme)
+  const themeId = tab.termTheme ?? globalTheme
   const fontSize = useSessions((s) => s.fontSize)
+  const termFont = useSessions((s) => s.termFont)
 
   // Create the xterm instance once per tab.
   useEffect(() => {
-    const { termTheme, fontSize: fs } = useSessions.getState()
+    const { termTheme: gTheme, fontSize: fs, termFont } = useSessions.getState()
+    const termTheme = tab.termTheme ?? gTheme
     const term = new Terminal({
-      fontFamily: '"Cascadia Mono", "JetBrains Mono", Consolas, monospace',
+      fontFamily: fontStack(termFont),
       fontSize: fs,
       lineHeight: 1.2,
       cursorBlink: true,
       cursorStyle: 'block',
-      scrollback: 10000,
+      scrollback: 40000,
+      drawBoldTextInBrightColors: false,
       allowProposedApi: true,
       theme: themeOf(termTheme)
     })
@@ -44,6 +48,7 @@ export function TerminalView({ tab, active }: Props) {
     term.loadAddon(fit)
     term.loadAddon(search)
     term.open(hostRef.current!)
+    void document.fonts.load('14px "Source Code Pro"').then(() => fit.fit())
     try {
       const webgl = new WebglAddon()
       webgl.onContextLoss(() => webgl.dispose())
@@ -54,6 +59,11 @@ export function TerminalView({ tab, active }: Props) {
     fit.fit()
 
     term.attachCustomKeyEventHandler((e) => {
+      if (tab.backspaceCtrlH && e.type === 'keydown' && e.key === 'Backspace' && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        if (sessionRef.current) window.api.ssh.write(sessionRef.current, '\x08')
+        e.preventDefault()
+        return false
+      }
       if (e.type !== 'keydown' || !e.ctrlKey || !e.shiftKey) return true
       const k = e.key.toLowerCase()
       if (k === 'c') {
@@ -169,8 +179,9 @@ export function TerminalView({ tab, active }: Props) {
   useEffect(() => {
     if (!termRef.current) return
     termRef.current.options.fontSize = fontSize
+    termRef.current.options.fontFamily = fontStack(termFont)
     fitRef.current?.fit()
-  }, [fontSize])
+  }, [fontSize, termFont])
 
   useEffect(() => {
     if (active && tab.status === 'ready') termRef.current?.focus()

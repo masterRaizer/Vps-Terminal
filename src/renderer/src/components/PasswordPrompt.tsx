@@ -32,8 +32,8 @@ function PromptDialog({ host, close }: { host: Host; close: () => void }) {
   const submit = async (): Promise<void> => {
     try {
       if (remember) {
-        const { id, label, address, port, username, auth, keyId, groupId, color, tags, favorite, notes } = host
-        await useVault.getState().saveHost({ id, label, address, port, username, auth, keyId, groupId, color, tags, favorite, notes }, password)
+        const { id, label, address, port, username, auth, keyId, groupId, color, tags, favorite, notes, options } = host
+        await useVault.getState().saveHost({ id, label, address, port, username, auth, keyId, groupId, color, tags, favorite, notes, options }, password)
         useSessions.getState().openHostTab(host, false)
       } else {
         useSessions.getState().openHostTab(host, true, password)

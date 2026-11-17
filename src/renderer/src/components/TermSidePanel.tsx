@@ -2,7 +2,7 @@ import type { JSX } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import { useSessions, type SideTab } from '@/store/sessions'
 import { termRegistry } from '@/lib/termRegistry'
-import { TERM_THEMES, type TermTheme } from '@/lib/termThemes'
+import { TERM_FONTS, TERM_THEMES, type TermTheme } from '@/lib/termThemes'
 import { EmptyState } from './ui'
 import { IconBraces, IconChevronDown, IconClock, IconMinus, IconPalette, IconPlus, IconRocket, IconSearch } from './Icons'
 
@@ -134,11 +134,20 @@ function ThemePreview({ t }: { t: TermTheme }) {
 }
 
 function ThemesPanel() {
-  const { termTheme, setTermTheme, fontSize, setFontSize } = useSessions()
+  const { termTheme, setTermTheme, fontSize, setFontSize, termFont, setTermFont } = useSessions()
   return (
     <>
+      <h3 className="sp-heading first">Шрифт</h3>
+      <div className="font-list">
+        {TERM_FONTS.map((f) => (
+          <button key={f.id} className={`font-item ${termFont === f.id ? 'active' : ''}`} onClick={() => setTermFont(f.id)} style={{ fontFamily: f.stack }}>
+            <span>{f.name}</span>
+            <small>{f.note}</small>
+          </button>
+        ))}
+      </div>
       <div className="sp-font">
-        <span>Шрифт</span>
+        <span>Размер</span>
         <span className="toolbar-spacer" />
         <button className="icon-btn" onClick={() => setFontSize(fontSize - 1)} title="Меньше">
           <IconMinus size={16} />

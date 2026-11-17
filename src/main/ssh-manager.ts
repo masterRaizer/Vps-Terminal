@@ -50,6 +50,7 @@ export class SshManager {
     client.on('ready', () => {
       client.shell(
         { term: 'xterm-256color', cols: req.cols, rows: req.rows },
+        { env: req.env ?? {} },
         (err, stream) => {
           if (err) {
             emit('error', err.message)
@@ -80,7 +81,8 @@ export class SshManager {
         port: req.port,
         username: req.username,
         password: req.password,
-        agent: req.agent ? defaultAgent() : undefined,
+        agent: req.agent || req.agentForward ? defaultAgent() : undefined,
+        agentForward: Boolean(req.agentForward && defaultAgent()),
         tryKeyboard: Boolean(req.password),
         readyTimeout: 20000,
         keepaliveInterval: 15000,

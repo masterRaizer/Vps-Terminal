@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import type { SessionStatus } from '@shared/ipc'
-import { DEFAULT_TERM_THEME, termThemeById } from '@/lib/termThemes'
+import { DEFAULT_TERM_FONT, DEFAULT_TERM_THEME, TERM_FONTS, termThemeById } from '@/lib/termThemes'
 
 export interface ConnectParams {
   host: string
@@ -16,6 +16,10 @@ export interface Tab {
   hostId?: string
   /** Whether reconnecting needs the user to type a password again. */
   needsPassword: boolean
+  /** Per-host terminal theme override. */
+  termTheme?: string | null
+  /** Send ^H instead of DEL for Backspace. */
+  backspaceCtrlH?: boolean
   sessionId?: string
   status: SessionStatus | 'idle'
   message?: string
@@ -39,6 +43,7 @@ export interface LogEntry {
 
 interface Prefs {
   termTheme: string
+  termFont: string
   fontSize: number
   sidePanel: boolean
   navCollapsed: boolean
@@ -55,7 +60,11 @@ interface State extends Prefs {
   focusSearchTick: number
 
   openTab(params: ConnectParams, password: string): void
-  openHostTab(host: { id: string; label: string; address: string; port: number; username: string }, needsPassword: boolean, password?: string): void
+  openHostTab(
+    host: { id: string; label: string; address: string; port: number; username: string; options?: { termTheme: string | null; backspace: string } },
+    needsPassword: boolean,
+    password?: string
+  ): void
   closeTab(id: string): void
   activate(id: string): void
   patchTab(id: string, patch: Partial<Tab>): void
@@ -69,16 +78,18 @@ interface State extends Prefs {
   toggleNav(): void
   setTermTheme(id: string): void
   setFontSize(n: number): void
+  setTermFont(id: string): void
   log(e: Omit<LogEntry, 'id' | 'at'>): void
 }
 
 const PREFS_KEY = 'vts.prefs'
-const defaults: Prefs = { termTheme: DEFAULT_TERM_THEME, fontSize: 14, sidePanel: true, navCollapsed: false }
+const defaults: Prefs = { termTheme: DEFAULT_TERM_THEME, termFont: DEFAULT_TERM_FONT, fontSize: 14, sidePanel: true, navCollapsed: false }
 
 function loadPrefs(): Prefs {
   try {
     const p = { ...defaults, ...JSON.parse(localStorage.getItem(PREFS_KEY) ?? '{}') } as Prefs
     if (!termThemeById(p.termTheme)) p.termTheme = DEFAULT_TERM_THEME
+    if (!TERM_FONTS.some((f) => f.id === p.termFont)) p.termFont = DEFAULT_TERM_FONT
     p.fontSize = Math.min(24, Math.max(10, Number(p.fontSize) || 14))
     return p
   } catch {
@@ -88,8 +99,8 @@ function loadPrefs(): Prefs {
 
 function savePrefs(s: Prefs): void {
   try {
-    const { termTheme, fontSize, sidePanel, navCollapsed } = s
-    localStorage.setItem(PREFS_KEY, JSON.stringify({ termTheme, fontSize, sidePanel, navCollapsed }))
+    const { termTheme, termFont, fontSize, sidePanel, navCollapsed } = s
+    localStorage.setItem(PREFS_KEY, JSON.stringify({ termTheme, termFont, fontSize, sidePanel, navCollapsed }))
   } catch {
     /* storage unavailable — prefs just won't persist */
   }
@@ -126,6 +137,8 @@ export const useSessions = create<State>((set, get) => ({
       params: { host: host.address, port: host.port, username: host.username },
       hostId: host.id,
       needsPassword,
+      termTheme: host.options?.termTheme ?? null,
+      backspaceCtrlH: host.options?.backspace === 'ctrl-h',
       status: 'idle',
       attempt: 1,
       pendingPassword: password
@@ -181,6 +194,10 @@ export const useSessions = create<State>((set, get) => ({
   },
   setTermTheme: (termTheme) => {
     set({ termTheme })
+    savePrefs(get())
+  },
+  setTermFont: (termFont) => {
+    set({ termFont })
     savePrefs(get())
   },
   setFontSize: (n) => {

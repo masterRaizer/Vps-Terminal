@@ -23,9 +23,21 @@ const navyAnsi = ansi(
 
 export const TERM_THEMES: TermTheme[] = [
   {
+    id: 'catppuccin-mocha',
+    name: 'Catppuccin Mocha',
+    note: 'по умолчанию · MIT',
+    theme: {
+      background: '#1e1e2e', foreground: '#cdd6f4', cursor: '#f5e0dc', cursorAccent: '#1e1e2e', selectionBackground: '#585b7099',
+      ...ansi(
+        ['#45475a', '#f38ba8', '#a6e3a1', '#f9e2af', '#89b4fa', '#f5c2e7', '#94e2d5', '#bac2de'],
+        ['#585b70', '#f38ba8', '#a6e3a1', '#f9e2af', '#89b4fa', '#f5c2e7', '#94e2d5', '#a6adc8']
+      )
+    }
+  },
+  {
     id: 'navy-green',
     name: 'Navy Green',
-    note: 'по умолчанию',
+    note: 'зелёный на синем',
     theme: { background: '#161a2b', foreground: '#2fcf86', cursor: '#2fcf86', cursorAccent: '#161a2b', selectionBackground: '#2fcf8640', ...navyAnsi }
   },
   {
@@ -96,8 +108,26 @@ export const TERM_THEMES: TermTheme[] = [
   }
 ]
 
-export const DEFAULT_TERM_THEME = 'navy-green'
+export const DEFAULT_TERM_THEME = 'catppuccin-mocha'
 
 export function termThemeById(id: string): TermTheme | undefined {
   return TERM_THEMES.find((t) => t.id === id)
 }
+
+export interface TermFont {
+  id: string
+  name: string
+  stack: string
+  note: string
+}
+
+/** Source Code Pro is bundled (OFL); the others are used when installed on the system. */
+export const TERM_FONTS: TermFont[] = [
+  { id: 'source-code-pro', name: 'Source Code Pro', stack: '"Source Code Pro", Consolas, monospace', note: 'встроен' },
+  { id: 'cascadia', name: 'Cascadia Mono', stack: '"Cascadia Mono", "Cascadia Code", Consolas, monospace', note: 'Windows 11' },
+  { id: 'jetbrains', name: 'JetBrains Mono', stack: '"JetBrains Mono", Consolas, monospace', note: 'если установлен' },
+  { id: 'consolas', name: 'Consolas', stack: 'Consolas, "Courier New", monospace', note: 'системный' }
+]
+
+export const DEFAULT_TERM_FONT = 'source-code-pro'
+export const fontStack = (id: string): string => (TERM_FONTS.find((f) => f.id === id) ?? TERM_FONTS[0]).stack

@@ -137,7 +137,14 @@ export function Field({ label, required, icon, multiline, ...rest }: InputHTMLAt
 /** Right-hand editor drawer used by vault pages. */
 export function Drawer({ title, onClose, children, footer, actions }: { title: string; onClose: () => void; children: ReactNode; footer?: ReactNode; actions?: ReactNode }) {
   return (
-    <aside className="drawer" aria-label={title} onKeyDown={(e) => e.key === 'Escape' && onClose()}>
+    <aside
+      className="drawer"
+      aria-label={title}
+      onKeyDown={(e) => {
+        // Escape closes an open menu first; only a second Escape closes the drawer.
+        if (e.key === 'Escape' && !e.currentTarget.querySelector('.popover')) onClose()
+      }}
+    >
       <header className="drawer-head">
         <h2>{title}</h2>
         {actions}

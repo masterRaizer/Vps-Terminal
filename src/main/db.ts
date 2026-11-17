@@ -29,7 +29,8 @@ const MIGRATIONS: string[] = [
      updated_at INTEGER NOT NULL,
      last_connected_at INTEGER
    );
-   CREATE INDEX hosts_group ON hosts(group_id);`
+   CREATE INDEX hosts_group ON hosts(group_id);`,
+  `ALTER TABLE hosts ADD COLUMN options TEXT NOT NULL DEFAULT '{}';`
 ]
 
 export function openDb(file: string): Db {

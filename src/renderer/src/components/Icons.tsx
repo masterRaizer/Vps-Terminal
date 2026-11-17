@@ -269,3 +269,52 @@ export const IconDownload = (p: P) => (
     <path d="M12 4v11M7.5 10.5L12 15l4.5-4.5M5 19.5h14" />
   </Base>
 )
+export const IconDots = (p: P) => (
+  <Base {...p}>
+    <circle cx="5.5" cy="12" r="1.2" fill="currentColor" />
+    <circle cx="12" cy="12" r="1.2" fill="currentColor" />
+    <circle cx="18.5" cy="12" r="1.2" fill="currentColor" />
+  </Base>
+)
+export const IconBackspace = (p: P) => (
+  <Base {...p}>
+    <path d="M8.5 5.5H20a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H8.5L3 12l5.5-6.5zM11 9.5l5 5M16 9.5l-5 5" />
+  </Base>
+)
+export const IconAgent = (p: P) => (
+  <Base {...p}>
+    <path d="M12 3l7.5 3v5.5c0 4.4-3.2 8.2-7.5 9.5-4.3-1.3-7.5-5.1-7.5-9.5V6L12 3z" />
+    <circle cx="12" cy="10.5" r="2" />
+    <path d="M12 12.5V16" />
+  </Base>
+)
+export const IconChain = (p: P) => (
+  <Base {...p}>
+    <rect x="3.5" y="4" width="17" height="5.5" rx="1.5" />
+    <rect x="3.5" y="14.5" width="17" height="5.5" rx="1.5" />
+    <path d="M12 9.5v5M7 6.75h.01M7 17.25h.01" />
+  </Base>
+)
+export const IconProxy = (p: P) => (
+  <Base {...p}>
+    <path d="M4 8h13M14 4.5L17.5 8 14 11.5M20 16H7M10 12.5L6.5 16l3.5 3.5" />
+  </Base>
+)
+export const IconVariable = (p: P) => (
+  <Base {...p}>
+    <rect x="3" y="5" width="18" height="14" rx="2.5" />
+    <path d="M8 9.5c-1 .8-1 4.2 0 5M16 9.5c1 .8 1 4.2 0 5M10.5 10l3 4M13.5 10l-3 4" />
+  </Base>
+)
+export const IconCharset = (p: P) => (
+  <Base {...p}>
+    <circle cx="12" cy="12" r="8.5" />
+    <path d="M9.5 9l-2 3 2 3M14.5 9l2 3-2 3" />
+  </Base>
+)
+export const IconPlusCircle = (p: P) => (
+  <Base {...p}>
+    <circle cx="12" cy="12" r="8.5" />
+    <path d="M12 8v8M8 12h8" />
+  </Base>
+)

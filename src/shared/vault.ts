@@ -11,6 +11,22 @@ export interface Group {
   updatedAt: number
 }
 
+export type BackspaceMode = 'del' | 'ctrl-h'
+
+/** Per-host session options. */
+export interface HostOptions {
+  /** What the Backspace key sends: DEL (^?, default) or ^H. */
+  backspace: BackspaceMode
+  /** Forward the local SSH agent to the server. */
+  agentForward: boolean
+  /** Environment variables requested for the shell (server must AcceptEnv them). */
+  env: Record<string, string>
+  /** Terminal theme override for this host; null = global theme. */
+  termTheme: string | null
+}
+
+export const DEFAULT_HOST_OPTIONS: HostOptions = { backspace: 'del', agentForward: false, env: {}, termTheme: null }
+
 export interface Host {
   id: string
   label: string
@@ -24,6 +40,7 @@ export interface Host {
   tags: string[]
   favorite: boolean
   notes: string
+  options: HostOptions
   /** True when a password for this host is stored in the OS credential store. */
   hasPassword: boolean
   createdAt: number

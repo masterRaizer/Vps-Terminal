@@ -4,7 +4,7 @@ import { MemorySecretStore, hostPasswordAccount } from '../src/main/secrets'
 import { validateHostInput, VaultRepo } from '../src/main/vault-repo'
 import { VaultService } from '../src/main/vault-service'
 
-const baseHost = { label: 'prod', address: '203.0.113.10', port: 22, username: 'root', auth: 'password', tags: ['web', 'web', ' eu '], favorite: true }
+const baseHost = { options: { backspace: 'ctrl-h', agentForward: true, env: { LANG: 'C.UTF-8' }, termTheme: 'glacier' }, label: 'prod', address: '203.0.113.10', port: 22, username: 'root', auth: 'password', tags: ['web', 'web', ' eu '], favorite: true }
 
 let secrets: MemorySecretStore
 let svc: VaultService
@@ -115,5 +115,15 @@ describe('memory fallback', () => {
     const h = await first.saveHost(baseHost, 'pw')
     const restarted = new VaultService(new VaultRepo(db), new MemorySecretStore())
     expect(restarted.snapshot().hosts.find((x) => x.id === h.id)!.hasPassword).toBe(false)
+  })
+})
+
+describe('host options', () => {
+  it('round-trips options and validates env names', async () => {
+    const h = await svc.saveHost(baseHost, undefined)
+    expect(h.options).toEqual({ backspace: 'ctrl-h', agentForward: true, env: { LANG: 'C.UTF-8' }, termTheme: 'glacier' })
+    await expect(svc.saveHost({ ...baseHost, options: { env: { 'BAD NAME': 'x' } } }, undefined)).rejects.toThrow(/недопустимое имя/)
+    const d = await svc.saveHost({ ...baseHost, options: undefined }, undefined)
+    expect(d.options).toEqual({ backspace: 'del', agentForward: false, env: {}, termTheme: null })
   })
 })
