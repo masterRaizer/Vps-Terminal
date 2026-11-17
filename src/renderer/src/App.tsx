@@ -5,7 +5,6 @@ import { PasswordPrompt } from './components/PasswordPrompt'
 import { PassphrasePrompt } from './components/PassphrasePrompt'
 import { InputDialog } from './components/InputDialog'
 import { ChmodDialog } from './components/files/ChmodDialog'
-import { HostPicker } from './components/files/HostPicker'
 import { TopBar } from './components/TopBar'
 import { NavSidebar } from './components/NavSidebar'
 import { TerminalView } from './components/TerminalView'
@@ -27,8 +26,9 @@ const PAGES = {
 }
 
 export function App() {
-  const { tabs, activeId, view, section, sidePanel, layouts } = useSessions()
-  const activeLayout = layouts.find((l) => activeId && l.tabIds.includes(activeId))
+  const { tabs, activeId, view, section, sidePanel, workspaces } = useSessions()
+  const activeWs = workspaces.find((w) => activeId && w.paneIds.includes(activeId))
+  const activeLayout = activeWs && activeWs.paneIds.length > 1 ? { dir: activeWs.dir, tabIds: activeWs.paneIds } : undefined
   const rectOf = (tabId: string): { left: string; top: string; width: string; height: string } | null => {
     if (view !== 'term') return null
     if (activeLayout?.tabIds.includes(tabId)) {
@@ -71,7 +71,6 @@ export function App() {
       <HostKeyDialog />
       <PasswordPrompt />
       <PassphrasePrompt />
-      <HostPicker />
       <ChmodDialog />
       <InputDialog />
     </div>

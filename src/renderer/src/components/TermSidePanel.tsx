@@ -115,7 +115,7 @@ function QuickPanel() {
               const h = useVault.getState().hosts.find((x) => x.id === hostId)
               if (!h) return
               useSessions.getState().showSftp()
-              void useSftp.getState().connect(h)
+              useSftp.getState().openHost(h)
             }}
           >
             Открыть файлы (SFTP)

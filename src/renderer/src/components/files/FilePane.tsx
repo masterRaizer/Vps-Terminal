@@ -23,6 +23,7 @@ type SortKey = 'name' | 'mtime' | 'size' | 'kind'
 interface Props {
   kind: 'local' | 'remote'
   title: string
+  titleExtra?: ReactNode
   icon: ReactNode
   path: string
   entries: FileEntry[]
@@ -197,6 +198,7 @@ export function FilePane(props: Props) {
           {props.icon}
         </Tile>
         <span className="fpane-title">{props.title}</span>
+        {props.titleExtra}
         <span className="toolbar-spacer" />
         {filterOpen ? (
           <label className="pane-filter">
@@ -288,7 +290,7 @@ export function FilePane(props: Props) {
           {header('name', 'Имя')}
           {header('mtime', 'Изменён')}
           {header('size', 'Размер')}
-          {header('kind', props.kind === 'remote' ? 'Права' : 'Тип')}
+          {header('kind', 'Тип')}
         </div>
         <div
           className="ftable-body"
@@ -338,11 +340,14 @@ export function FilePane(props: Props) {
             >
               <span className="fname" title={e.name}>
                 {e.type === 'dir' ? <IconFolderSolid size={22} className="crumb-folder" /> : <span className={`ficon ${e.type}`} />}
-                <span className="fname-text">{e.name}</span>
+                <span className="fname-stack">
+                  <span className="fname-text">{e.name}</span>
+                  {props.kind === 'remote' && e.mode !== null && <span className="fname-perm">{permString(e.mode, e.type)}</span>}
+                </span>
               </span>
               <span className="fcell">{e.mtime ? new Date(e.mtime).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : ''}</span>
               <span className="fcell">{e.type === 'dir' ? '--' : fmtSize(e.size)}</span>
-              <span className="fcell mono-sm">{props.kind === 'remote' ? permString(e.mode, e.type) : kindOf(e)}</span>
+              <span className="fcell">{kindOf(e)}</span>
             </div>
           ))}
           {!props.loading && !props.error && rows.length === 0 && <div className="ftable-empty">{filter ? 'Ничего не найдено' : 'Пустая папка'}</div>}

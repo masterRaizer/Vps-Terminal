@@ -1,141 +1,39 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { FileEntry, Listing } from '@shared/files'
-import { useSftp } from '@/store/sftp'
+import { useSftp, type PaneSource } from '@/store/sftp'
 import { errorText } from '@/lib/errors'
 import { askText } from '@/components/InputDialog'
 import { askChmod } from '@/components/files/ChmodDialog'
 import { FilePane, fmtSize, joinPath, type DragPayload, type PaneAction } from '@/components/files/FilePane'
+import { PaneHostPicker } from '@/components/files/PaneHostPicker'
+import { Flag } from '@/components/Flag'
 import { IconClose, IconFolder, IconLaptop, IconServer } from '@/components/Icons'
 
-const localSep = navigator.userAgent.includes('Windows') ? '\\' : '/'
-
-function useListing(list: (p: string) => Promise<Listing>, initial: string | null) {
-  const [path, setPath] = useState<string | null>(initial)
-  const [data, setData] = useState<Listing | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string>()
-  const load = useCallback(
-    async (p: string) => {
-      setLoading(true)
-      setError(undefined)
-      try {
-        const l = await list(p)
-        setData(l)
-        setPath(l.path)
-      } catch (e) {
-        setError(errorText(e))
-        setPath(p)
-        setData({ path: p, entries: [] })
-      } finally {
-        setLoading(false)
-      }
-    },
-    [list]
-  )
-  return { path, data, loading, error, load, setPath }
-}
+const localSep: '/' | '\\' = navigator.userAgent.includes('Windows') ? '\\' : '/'
+type Side = 0 | 1
+const sepOf = (src: PaneSource | null): '/' | '\\' => (src?.kind === 'local' ? localSep : '/')
 
 export function SftpPage() {
-  const sftp = useSftp()
-  const [roots, setRoots] = useState<string[]>([])
-  const local = useListing(useCallback((p: string) => window.api.local.list(p), []), null)
-  const remoteId = sftp.remote?.sftpId
-  const remote = useListing(useCallback((p: string) => (remoteId ? window.api.sftp.list(remoteId, p) : Promise.reject(new Error('Нет соединения'))), [remoteId]), null)
   const [notice, setNotice] = useState<string>()
-
+  const [refresh, setRefresh] = useState(0)
+  const doneCount = useSftp((s) => s.transfers.filter((t) => t.status === 'done').length)
   useEffect(() => {
-    void (async () => {
-      setRoots(await window.api.local.roots())
-      void local.load(await window.api.local.home())
-    })()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    if (doneCount) setRefresh((r) => r + 1)
+  }, [doneCount])
 
-  useEffect(() => {
-    if (sftp.remote) void remote.load(sftp.remote.home)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sftp.remote?.sftpId])
-
-  // Refresh panes when a transfer into them finishes.
-  const lastDone = sftp.transfers.filter((t) => t.status === 'done').length
-  useEffect(() => {
-    if (!lastDone) return
-    if (local.path) void local.load(local.path)
-    if (remote.path && remoteId) void remote.load(remote.path)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lastDone])
-
-  const fail = (e: unknown): void => setNotice(errorText(e))
-
-  const upload = async (paths: string[]): Promise<void> => {
-    if (!remoteId || !remote.path) return setNotice('Сначала подключитесь к хосту справа')
-    await window.api.sftp.upload(remoteId, paths, remote.path).catch(fail)
-  }
-  const download = async (paths: string[]): Promise<void> => {
-    if (!remoteId || !local.path) return
-    await window.api.sftp.download(remoteId, paths, local.path).catch(fail)
-  }
-
-  const localActions = (sel: FileEntry[]): PaneAction[] => [
-    { label: sel.length > 1 ? `Загрузить на сервер (${sel.length})` : 'Загрузить на сервер', disabled: !remoteId, onClick: () => void upload(sel.map((e) => joinPath(local.path!, e.name, localSep))) },
-    { label: 'Открыть', disabled: sel.length !== 1 || sel[0].type === 'dir', onClick: () => void window.api.local.open(joinPath(local.path!, sel[0].name, localSep)).catch(fail) },
-    {
-      label: 'Переименовать',
-      disabled: sel.length !== 1,
-      onClick: async () => {
-        const n = await askText({ title: 'Переименовать', value: sel[0].name, okText: 'Переименовать' })
-        if (n && n !== sel[0].name) await window.api.local.rename(joinPath(local.path!, sel[0].name, localSep), joinPath(local.path!, n, localSep)).catch(fail)
-        void local.load(local.path!)
-      }
-    },
-    {
-      label: 'В корзину',
-      danger: true,
-      onClick: async () => {
-        if (!window.confirm(`Переместить в корзину: ${sel.map((s) => s.name).join(', ')}?`)) return
-        for (const e of sel) await window.api.local.trash(joinPath(local.path!, e.name, localSep)).catch(fail)
-        void local.load(local.path!)
-      }
+  /** Copies paths from one side into the other side's current folder. */
+  const transfer = async (from: Side, paths: string[]): Promise<void> => {
+    const { panes } = useSftp.getState()
+    const src = panes[from].source
+    const dst = panes[from === 0 ? 1 : 0]
+    if (!src || !dst.source || !dst.path) return setNotice('Откройте папку назначения во второй панели')
+    try {
+      if (src.kind === 'local' && dst.source.kind === 'remote') await window.api.sftp.upload(dst.source.sftpId, paths, dst.path)
+      else if (src.kind === 'remote' && dst.source.kind === 'local') await window.api.sftp.download(src.sftpId, paths, dst.path)
+      else setNotice(src.kind === 'local' ? 'Обе панели локальные — откройте хост в одной из них' : 'Копирование между двумя серверами появится позже: скачайте файл, затем загрузите')
+    } catch (e) {
+      setNotice(errorText(e))
     }
-  ]
-
-  const remoteActions = (sel: FileEntry[]): PaneAction[] => [
-    { label: sel.length > 1 ? `Скачать (${sel.length})` : 'Скачать', onClick: () => void download(sel.map((e) => joinPath(remote.path!, e.name, '/'))) },
-    {
-      label: 'Переименовать',
-      disabled: sel.length !== 1,
-      onClick: async () => {
-        const n = await askText({ title: 'Переименовать', value: sel[0].name, okText: 'Переименовать' })
-        if (n && n !== sel[0].name && !n.includes('/')) await window.api.sftp.rename(remoteId!, joinPath(remote.path!, sel[0].name, '/'), joinPath(remote.path!, n, '/')).catch(fail)
-        void remote.load(remote.path!)
-      }
-    },
-    {
-      label: 'Права доступа…',
-      disabled: sel.length !== 1 || sel[0].mode === null,
-      onClick: async () => {
-        const m = await askChmod(sel[0].name, sel[0].mode ?? 0o644)
-        if (m !== null) await window.api.sftp.chmod(remoteId!, joinPath(remote.path!, sel[0].name, '/'), m).catch(fail)
-        void remote.load(remote.path!)
-      }
-    },
-    {
-      label: 'Удалить',
-      danger: true,
-      onClick: async () => {
-        if (!window.confirm(`Удалить на сервере без возможности восстановления: ${sel.map((s) => s.name).join(', ')}?`)) return
-        for (const e of sel) await window.api.sftp.remove(remoteId!, joinPath(remote.path!, e.name, '/')).catch(fail)
-        void remote.load(remote.path!)
-      }
-    }
-  ]
-
-  const newFolder = async (kind: 'local' | 'remote'): Promise<void> => {
-    const n = await askText({ title: 'Новая папка', value: 'Новая папка', okText: 'Создать' })
-    if (!n) return
-    if (kind === 'local') await window.api.local.mkdir(joinPath(local.path!, n, localSep)).catch(fail)
-    else if (!n.includes('/')) await window.api.sftp.mkdir(remoteId!, joinPath(remote.path!, n, '/')).catch(fail)
-    void (kind === 'local' ? local.load(local.path!) : remote.load(remote.path!))
   }
 
   return (
@@ -149,71 +47,176 @@ export function SftpPage() {
         </div>
       )}
       <div className="sftp">
-        {local.path ? (
-          <FilePane
-            kind="local"
-            title="Локальный компьютер"
-            icon={<IconLaptop size={18} />}
-            path={local.path}
-            entries={local.data?.entries ?? []}
-            loading={local.loading}
-            error={local.error}
-            sep={localSep}
-            roots={roots}
-            onNavigate={(p) => void local.load(p)}
-            onRefresh={() => void local.load(local.path!)}
-            onOpenFile={(e) => void window.api.local.open(joinPath(local.path!, e.name, localSep)).catch(fail)}
-            paneActions={[
-              { label: 'Новая папка', onClick: () => void newFolder('local') },
-              { label: 'Домашняя папка', onClick: async () => void local.load(await window.api.local.home()) },
-              { label: 'Обновить', onClick: () => void local.load(local.path!) }
-            ]}
-            itemActions={localActions}
-            onDropPayload={(p: DragPayload) => void download(p.paths)}
-          />
-        ) : (
-          <section className="fpane" />
-        )}
-        {sftp.remote && remote.path ? (
-          <FilePane
-            kind="remote"
-            title={sftp.remote.label}
-            icon={<IconServer size={18} />}
-            path={remote.path}
-            entries={remote.data?.entries ?? []}
-            loading={remote.loading}
-            error={remote.error}
-            sep="/"
-            onNavigate={(p) => void remote.load(p)}
-            onRefresh={() => void remote.load(remote.path!)}
-            onOpenFile={(e) => void download([joinPath(remote.path!, e.name, '/')])}
-            paneActions={[
-              { label: 'Новая папка', onClick: () => void newFolder('remote') },
-              { label: 'Домашняя папка', onClick: () => void remote.load(sftp.remote!.home) },
-              { label: 'Другой хост…', onClick: () => sftp.setPicking(true) },
-              { label: 'Отключиться', danger: true, onClick: () => sftp.disconnect() }
-            ]}
-            itemActions={remoteActions}
-            onDropPayload={(p: DragPayload) => void upload(p.paths)}
-            onDropOsFiles={(paths) => void upload(paths)}
-          />
-        ) : (
-          <section className="fpane remote">
-            <div className="empty-state">
-              <span className="empty-icon">
-                <IconFolder size={26} />
-              </span>
-              <h3>{sftp.connecting ? `Подключение к ${sftp.connecting}…` : 'Подключитесь к хосту'}</h3>
-              <p>{sftp.error ?? 'Выберите сохранённый хост, чтобы управлять файлами по SFTP. Файлы можно перетаскивать между панелями и из проводника.'}</p>
-              <button className="btn-soft" onClick={() => sftp.setPicking(true)} disabled={Boolean(sftp.connecting)}>
-                Выбрать хост
-              </button>
-            </div>
-          </section>
-        )}
+        <SftpSide side={0} onTransfer={transfer} onNotice={setNotice} refresh={refresh} />
+        <SftpSide side={1} onTransfer={transfer} onNotice={setNotice} refresh={refresh} />
       </div>
       <TransferBar />
     </div>
+  )
+}
+
+function SftpSide({ side, onTransfer, onNotice, refresh }: { side: Side; onTransfer: (from: Side, paths: string[]) => Promise<void>; onNotice: (m: string) => void; refresh: number }) {
+  const pane = useSftp((s) => s.panes[side])
+  const other = useSftp((s) => s.panes[side === 0 ? 1 : 0])
+  const { patch, setLocal, connect, disconnect } = useSftp.getState()
+  const src = pane.source
+  const sep = sepOf(src)
+  const [listing, setListing] = useState<Listing | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string>()
+  const [roots, setRoots] = useState<string[]>([])
+  const fail = (e: unknown): void => onNotice(errorText(e))
+
+  const load = useCallback(
+    async (p: string) => {
+      const s = useSftp.getState().panes[side].source
+      if (!s) return
+      setLoading(true)
+      setError(undefined)
+      try {
+        const l = s.kind === 'local' ? await window.api.local.list(p) : await window.api.sftp.list(s.sftpId, p)
+        setListing(l)
+        useSftp.getState().patch(side, { path: l.path })
+      } catch (e) {
+        setError(errorText(e))
+        setListing({ path: p, entries: [] })
+        useSftp.getState().patch(side, { path: p })
+      } finally {
+        setLoading(false)
+      }
+    },
+    [side]
+  )
+
+  // (Re)open the start folder whenever the source changes.
+  const srcKey = src ? (src.kind === 'local' ? 'local' : src.sftpId) : ''
+  useEffect(() => {
+    setListing(null)
+    if (!src) return
+    void (async () => {
+      if (src.kind === 'local') {
+        setRoots(await window.api.local.roots())
+        void load(await window.api.local.home())
+      } else void load(src.home)
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [srcKey])
+
+  useEffect(() => {
+    if (refresh && pane.path && src) void load(pane.path)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refresh])
+
+  if (pane.picking || (!src && !pane.connecting && pane.picking)) {
+    return (
+      <section className="fpane">
+        <PaneHostPicker onPick={(h) => void connect(side, h)} onLocal={() => setLocal(side)} onBack={() => patch(side, { picking: false })} />
+      </section>
+    )
+  }
+
+  if (!src || !listing) {
+    return (
+      <section className="fpane remote">
+        <div className="empty-state">
+          <span className="empty-icon">
+            <IconFolder size={26} />
+          </span>
+          <h3>{pane.connecting ? `Подключение к ${pane.connecting}…` : src ? 'Загрузка…' : 'Подключитесь к хосту'}</h3>
+          <p>{pane.error ?? 'Выберите сохранённый хост, чтобы управлять файлами по SFTP, или откройте локальные файлы.'}</p>
+          {!src && (
+            <button className="btn-soft" onClick={() => patch(side, { picking: true })} disabled={Boolean(pane.connecting)}>
+              Выбрать хост
+            </button>
+          )}
+        </div>
+      </section>
+    )
+  }
+
+  const path = listing.path
+  const otherName = other.source ? (other.source.kind === 'local' ? 'на компьютер' : `на ${other.source.label}`) : null
+  const canSend = Boolean(other.source && other.path && other.source.kind !== src.kind)
+  const isRemote = src.kind === 'remote'
+
+  const itemActions = (sel: FileEntry[]): PaneAction[] => [
+    {
+      label: `${isRemote ? 'Скачать' : 'Загрузить'} ${otherName ?? ''}${sel.length > 1 ? ` (${sel.length})` : ''}`.trim(),
+      disabled: !canSend,
+      onClick: () => void onTransfer(side, sel.map((e) => joinPath(path, e.name, sep)))
+    },
+    ...(isRemote ? [] : [{ label: 'Открыть', disabled: sel.length !== 1 || sel[0].type === 'dir', onClick: () => void window.api.local.open(joinPath(path, sel[0].name, sep)).catch(fail) }]),
+    {
+      label: 'Переименовать',
+      disabled: sel.length !== 1,
+      onClick: async () => {
+        const n = await askText({ title: 'Переименовать', value: sel[0].name, okText: 'Переименовать' })
+        if (!n || n === sel[0].name || n.includes('/') || (!isRemote && n.includes('\\'))) return
+        const a = joinPath(path, sel[0].name, sep)
+        const b = joinPath(path, n, sep)
+        await (isRemote ? window.api.sftp.rename(src.sftpId, a, b) : window.api.local.rename(a, b)).catch(fail)
+        void load(path)
+      }
+    },
+    ...(isRemote
+      ? [
+          {
+            label: 'Права доступа…',
+            disabled: sel.length !== 1 || sel[0].mode === null,
+            onClick: async () => {
+              const m = await askChmod(sel[0].name, sel[0].mode ?? 0o644)
+              if (m !== null) await window.api.sftp.chmod(src.sftpId, joinPath(path, sel[0].name, '/'), m).catch(fail)
+              void load(path)
+            }
+          }
+        ]
+      : []),
+    {
+      label: isRemote ? 'Удалить' : 'В корзину',
+      danger: true,
+      onClick: async () => {
+        const names = sel.map((s) => s.name).join(', ')
+        if (!window.confirm(isRemote ? `Удалить на сервере без возможности восстановления: ${names}?` : `Переместить в корзину: ${names}?`)) return
+        for (const e of sel) await (isRemote ? window.api.sftp.remove(src.sftpId, joinPath(path, e.name, '/')) : window.api.local.trash(joinPath(path, e.name, sep))).catch(fail)
+        void load(path)
+      }
+    }
+  ]
+
+  const newFolder = async (): Promise<void> => {
+    const n = await askText({ title: 'Новая папка', value: 'Новая папка', okText: 'Создать' })
+    if (!n || n.includes('/')) return
+    const p = joinPath(path, n, sep)
+    await (isRemote ? window.api.sftp.mkdir(src.sftpId, p) : window.api.local.mkdir(p)).catch(fail)
+    void load(path)
+  }
+
+  return (
+    <FilePane
+      kind={src.kind}
+      title={isRemote ? src.label : 'Локально'}
+      icon={isRemote ? <IconServer size={18} /> : <IconLaptop size={18} />}
+      titleExtra={isRemote && src.country ? <Flag cc={src.country} size={18} /> : undefined}
+      path={path}
+      entries={listing.entries}
+      loading={loading}
+      error={error}
+      sep={sep}
+      roots={isRemote ? undefined : roots}
+      onNavigate={(p) => void load(p)}
+      onRefresh={() => void load(path)}
+      onOpenFile={(e) => (isRemote ? void onTransfer(side, [joinPath(path, e.name, '/')]) : void window.api.local.open(joinPath(path, e.name, sep)).catch(fail))}
+      paneActions={[
+        { label: 'Новая папка', onClick: () => void newFolder() },
+        { label: 'Домашняя папка', onClick: async () => void load(isRemote ? src.home : await window.api.local.home()) },
+        { label: 'Обновить', onClick: () => void load(path) },
+        { label: 'Выбрать другой хост…', onClick: () => patch(side, { picking: true }) },
+        ...(isRemote ? [{ label: 'Отключиться', danger: true, onClick: () => disconnect(side) }] : [])
+      ]}
+      itemActions={itemActions}
+      onDropPayload={(p: DragPayload) => void onTransfer(side === 0 ? 1 : 0, p.paths)}
+      onDropOsFiles={isRemote ? (paths) => void window.api.sftp.upload(src.sftpId, paths, path).catch(fail) : undefined}
+    />
   )
 }
 

@@ -53,15 +53,22 @@ interface Prefs {
   navCollapsed: boolean
 }
 
-export interface SplitLayout {
+/** A top-bar tab. It holds one or more terminal panes (sessions); splits stay inside it. */
+export interface Workspace {
   id: string
+  /** Host label without the "(n)" suffix. */
+  base: string
+  title: string
   dir: 'row' | 'col'
-  tabIds: string[]
+  paneIds: string[]
+  /** Pane that gets focus when this tab is activated. */
+  focus: string
 }
 
 interface State extends Prefs {
+  /** Terminal panes (one SSH session each). */
   tabs: Tab[]
-  layouts: SplitLayout[]
+  workspaces: Workspace[]
   activeId?: string
   view: View
   section: Section
@@ -78,7 +85,10 @@ interface State extends Prefs {
     needsPassword: boolean,
     password?: string
   ): void
+  /** Closes one pane; the tab disappears with its last pane. */
   closeTab(id: string): void
+  closeWorkspace(id: string): void
+  activateWorkspace(id: string): void
   activate(id: string): void
   patchTab(id: string, patch: Partial<Tab>): void
   takePassword(id: string): string | undefined
@@ -120,10 +130,19 @@ function savePrefs(s: Prefs): void {
   }
 }
 
+/** New top-bar tab; repeated hosts get "label (1)", "label (2)"… */
+function addWorkspace(pane: Tab): void {
+  useSessions.setState((s) => {
+    const n = s.workspaces.filter((w) => w.base === pane.title).length
+    const ws: Workspace = { id: crypto.randomUUID(), base: pane.title, title: n ? `${pane.title} (${n})` : pane.title, dir: 'row', paneIds: [pane.id], focus: pane.id }
+    return { tabs: [...s.tabs, pane], workspaces: [...s.workspaces, ws], activeId: pane.id, view: 'term' }
+  })
+}
+
 export const useSessions = create<State>((set, get) => ({
   ...loadPrefs(),
   tabs: [],
-  layouts: [],
+  workspaces: [],
   activeId: undefined,
   view: 'vault',
   section: 'hosts',
@@ -132,22 +151,12 @@ export const useSessions = create<State>((set, get) => ({
   focusSearchTick: 0,
 
   openTab: (params, password) => {
-    const id = crypto.randomUUID()
-    const tab: Tab = {
-      id,
-      title: params.host,
-      params,
-      needsPassword: true,
-      status: 'idle',
-      attempt: 1,
-      pendingPassword: password
-    }
-    set((s) => ({ tabs: [...s.tabs, tab], activeId: id, view: 'term' }))
+    const pane: Tab = { id: crypto.randomUUID(), title: params.host, params, needsPassword: true, status: 'idle', attempt: 1, pendingPassword: password }
+    addWorkspace(pane)
   },
   openHostTab: (host, needsPassword, password) => {
-    const id = crypto.randomUUID()
-    const tab: Tab = {
-      id,
+    addWorkspace({
+      id: crypto.randomUUID(),
       title: host.label,
       params: { host: host.address, port: host.port, username: host.username },
       hostId: host.id,
@@ -157,13 +166,13 @@ export const useSessions = create<State>((set, get) => ({
       status: 'idle',
       attempt: 1,
       pendingPassword: password
-    }
-    set((s) => ({ tabs: [...s.tabs, tab], activeId: id, view: 'term' }))
+    })
   },
   split: async (dir) => {
     const src = get().tabs.find((t) => t.id === get().activeId)
     if (!src) return
-    if (get().layouts.find((l) => l.tabIds.includes(src.id))?.tabIds.length === 4) return
+    const wsOf = (): Workspace | undefined => get().workspaces.find((w) => w.paneIds.includes(src.id))
+    if ((wsOf()?.paneIds.length ?? 0) >= 4) return
     // The first session's password is never kept, so a new pane has to ask for it.
     let pendingPassword: string | undefined
     if (src.needsPassword) {
@@ -171,12 +180,10 @@ export const useSessions = create<State>((set, get) => ({
       if (pw === null) return
       pendingPassword = pw
     }
-    const s = get()
-    const layout = s.layouts.find((l) => l.tabIds.includes(src.id))
-    if (layout && layout.tabIds.length >= 4) return
-    const id = crypto.randomUUID()
-    const tab: Tab = {
-      id,
+    const ws = wsOf()
+    if (!ws || ws.paneIds.length >= 4) return
+    const pane: Tab = {
+      id: crypto.randomUUID(),
       title: src.title,
       params: src.params,
       hostId: src.hostId,
@@ -187,29 +194,47 @@ export const useSessions = create<State>((set, get) => ({
       attempt: 1,
       pendingPassword
     }
-    const tabs = [...s.tabs]
-    tabs.splice(tabs.findIndex((t) => t.id === src.id) + 1, 0, tab)
-    const layouts = layout
-      ? s.layouts.map((l) => (l === layout ? { ...l, dir, tabIds: [...l.tabIds.slice(0, l.tabIds.indexOf(src.id) + 1), id, ...l.tabIds.slice(l.tabIds.indexOf(src.id) + 1)] } : l))
-      : [...s.layouts, { id: crypto.randomUUID(), dir, tabIds: [src.id, id] }]
-    set({ tabs, layouts, activeId: id, view: 'term' })
+    const at = ws.paneIds.indexOf(src.id) + 1
+    set((s) => ({
+      tabs: [...s.tabs, pane],
+      workspaces: s.workspaces.map((w) => (w.id === ws.id ? { ...w, dir, paneIds: [...w.paneIds.slice(0, at), pane.id, ...w.paneIds.slice(at)], focus: pane.id } : w)),
+      activeId: pane.id,
+      view: 'term'
+    }))
   },
   closeTab: (id) => {
     const tab = get().tabs.find((t) => t.id === id)
     if (tab?.sessionId) window.api.ssh.disconnect(tab.sessionId)
     set((s) => {
-      const idx = s.tabs.findIndex((t) => t.id === id)
       const tabs = s.tabs.filter((t) => t.id !== id)
-      const oldLayout = s.layouts.find((l) => l.tabIds.includes(id))
-      const layouts = s.layouts.map((l) => ({ ...l, tabIds: l.tabIds.filter((t) => t !== id) })).filter((l) => l.tabIds.length > 1)
-      if (s.activeId !== id) return { tabs, layouts }
-      // Prefer a remaining pane of the same split, then the neighbouring tab.
-      const paneMate = oldLayout?.tabIds.find((t) => t !== id)
-      const next = paneMate ?? tabs[Math.min(idx, tabs.length - 1)]?.id
-      return { tabs, layouts, activeId: next, view: s.view === 'term' && !next ? 'vault' : s.view }
+      const wsIdx = s.workspaces.findIndex((w) => w.paneIds.includes(id))
+      const ws = s.workspaces[wsIdx]
+      let workspaces = s.workspaces
+      let next = s.activeId
+      if (ws) {
+        const paneIds = ws.paneIds.filter((p) => p !== id)
+        if (paneIds.length) {
+          const focus = ws.focus === id ? paneIds[Math.max(0, ws.paneIds.indexOf(id) - 1)] : ws.focus
+          workspaces = s.workspaces.map((w) => (w.id === ws.id ? { ...w, paneIds, focus } : w))
+          if (s.activeId === id) next = focus
+        } else {
+          workspaces = s.workspaces.filter((w) => w.id !== ws.id)
+          if (s.activeId === id) next = workspaces[Math.min(wsIdx, workspaces.length - 1)]?.focus
+        }
+      }
+      return { tabs, workspaces, activeId: next, view: s.view === 'term' && !next ? 'vault' : s.view }
     })
   },
-  activate: (id) => set({ activeId: id, view: 'term' }),
+  closeWorkspace: (wsId) => {
+    const ws = get().workspaces.find((w) => w.id === wsId)
+    ws?.paneIds.forEach((p) => get().closeTab(p))
+  },
+  activateWorkspace: (wsId) => {
+    const ws = get().workspaces.find((w) => w.id === wsId)
+    if (ws) set({ activeId: ws.focus, view: 'term' })
+  },
+  activate: (id) =>
+    set((s) => ({ activeId: id, view: 'term', workspaces: s.workspaces.map((w) => (w.paneIds.includes(id) ? { ...w, focus: id } : w)) })),
   patchTab: (id, patch) =>
     set((s) => ({ tabs: s.tabs.map((t) => (t.id === id ? { ...t, ...patch } : t)) })),
   takePassword: (id) => {

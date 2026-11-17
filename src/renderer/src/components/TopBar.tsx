@@ -1,5 +1,5 @@
 import { useSessions } from '@/store/sessions'
-import { IconBell, IconChevronDown, IconClose, IconFolder, IconMenu, IconPanelRight, IconPlus, IconTerminal, IconVault } from './Icons'
+import { IconBell, IconChevronDown, IconClose, IconFolder, IconMenu, IconPanelRight, IconPlus, IconPrompt, IconTerminal, IconVault } from './Icons'
 
 const isWindows = navigator.userAgent.includes('Windows')
 
@@ -21,35 +21,39 @@ export function TopBar() {
       <button className={`top-tab ${s.view === 'sftp' ? 'active' : ''}`} onClick={s.showSftp}>
         <IconFolder size={17} /> SFTP
       </button>
-      {s.tabs.length > 0 && <span className="top-sep" />}
       <div className="top-sessions">
-        {s.tabs.map((t) => {
-          const active = s.view === 'term' && t.id === s.activeId
+        {s.workspaces.map((w) => {
+          const active = s.view === 'term' && w.paneIds.includes(s.activeId ?? '')
+          const focus = s.tabs.find((t) => t.id === w.focus)
+          const status = focus?.status ?? 'idle'
           return (
             <div
-              key={t.id}
-              className={`top-tab term-tab st-${t.status} ${active ? 'active' : ''}`}
+              key={w.id}
+              className={`top-tab term-tab st-${status} ${active ? 'active' : ''}`}
               onMouseDown={(e) => {
                 if (e.button === 1) {
                   e.preventDefault()
-                  s.closeTab(t.id)
-                } else if (e.button === 0) s.activate(t.id)
+                  s.closeWorkspace(w.id)
+                } else if (e.button === 0) s.activateWorkspace(w.id)
               }}
-              title={`${t.params.username}@${t.params.host}:${t.params.port}`}
+              title={focus ? `${focus.params.username}@${focus.params.host}:${focus.params.port}` : w.title}
               role="tab"
               aria-selected={active}
             >
-              <button
-                className="tt-close"
-                aria-label="Закрыть сессию"
-                onMouseDown={(e) => e.stopPropagation()}
-                onClick={() => s.closeTab(t.id)}
-              >
-                <IconClose size={15} />
-              </button>
-              <span className="tt-title">{t.title}</span>
-              {s.layouts.some((l) => l.tabIds.includes(t.id)) && <span className="tt-split" title="В разделённом виде" />}
-              <IconTerminal size={17} className="tt-icon" />
+              <span className="tt-lead">
+                <IconPrompt size={16} className="tt-prompt" />
+                <button
+                  className="tt-close"
+                  aria-label="Закрыть вкладку"
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={() => s.closeWorkspace(w.id)}
+                >
+                  <IconClose size={15} />
+                </button>
+              </span>
+              <span className="tt-title">{w.title}</span>
+              {w.paneIds.length > 1 && <span className="tt-count" title="Панелей во вкладке">{w.paneIds.length}</span>}
+              {active && <IconTerminal size={17} className="tt-icon" />}
             </div>
           )
         })}

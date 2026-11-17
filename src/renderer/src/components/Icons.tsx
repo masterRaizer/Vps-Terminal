@@ -324,3 +324,8 @@ export const IconGlobe = (p: P) => (
     <path d="M3.5 12h17M12 3.5c2.4 2.3 3.6 5.1 3.6 8.5s-1.2 6.2-3.6 8.5c-2.4-2.3-3.6-5.1-3.6-8.5S9.6 5.8 12 3.5z" />
   </Base>
 )
+export const IconPrompt = (p: P) => (
+  <Base {...p}>
+    <path d="M5 7l5 5-5 5M12.5 17H19" />
+  </Base>
+)
