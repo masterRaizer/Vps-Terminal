@@ -28,12 +28,12 @@ function createWindow(): void {
     minWidth: 860,
     minHeight: 520,
     title: APP_NAME,
-    backgroundColor: '#0b0e14',
+    backgroundColor: '#151a2b',
     show: false,
     autoHideMenuBar: true,
     titleBarStyle: process.platform === 'win32' ? 'hidden' : 'default',
     titleBarOverlay:
-      process.platform === 'win32' ? { color: '#0b0e14', symbolColor: '#9aa4b8', height: 36 } : false,
+      process.platform === 'win32' ? { color: '#151a2b', symbolColor: '#c5cad8', height: 52 } : false,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,

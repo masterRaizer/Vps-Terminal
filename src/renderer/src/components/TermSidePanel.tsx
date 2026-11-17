@@ -1,0 +1,165 @@
+import type { JSX } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useSessions, type SideTab } from '@/store/sessions'
+import { termRegistry } from '@/lib/termRegistry'
+import { TERM_THEMES, type TermTheme } from '@/lib/termThemes'
+import { EmptyState } from './ui'
+import { IconBraces, IconChevronDown, IconClock, IconMinus, IconPalette, IconPlus, IconRocket, IconSearch } from './Icons'
+
+export const FOCUS_TERM_SEARCH = 'vts:focus-term-search'
+
+const TABS: Array<{ id: SideTab; title: string; icon: JSX.Element }> = [
+  { id: 'quick', title: 'Быстрые действия', icon: <IconRocket size={18} /> },
+  { id: 'snippets', title: 'Сниппеты', icon: <IconBraces size={18} /> },
+  { id: 'history', title: 'История', icon: <IconClock size={18} /> },
+  { id: 'themes', title: 'Оформление', icon: <IconPalette size={18} /> }
+]
+
+export function TermSidePanel() {
+  const sideTab = useSessions((s) => s.sideTab)
+  const setSideTab = useSessions((s) => s.setSideTab)
+  return (
+    <aside className="sidepanel">
+      <div className="sp-tabs">
+        {TABS.map((t) => (
+          <button key={t.id} className={`sp-tab ${sideTab === t.id ? 'active' : ''}`} title={t.title} onClick={() => setSideTab(t.id)}>
+            {t.icon}
+          </button>
+        ))}
+      </div>
+      <div className="sp-body">
+        {sideTab === 'quick' && <QuickPanel />}
+        {sideTab === 'snippets' && (
+          <>
+            <div className="sp-row">
+              <button className="tool" disabled title="Шаг 4">
+                <IconBraces size={16} /> Новый сниппет
+              </button>
+            </div>
+            <EmptyState icon={<IconBraces size={24} />} title="Сниппетов нет" text="Команды из библиотеки можно будет вставлять в сессию в один клик (шаг 4)." />
+          </>
+        )}
+        {sideTab === 'history' && (
+          <EmptyState icon={<IconClock size={24} />} title="Истории команд нет" text="История введённых команд для этого хоста появится вместе со сниппетами." />
+        )}
+        {sideTab === 'themes' && <ThemesPanel />}
+      </div>
+    </aside>
+  )
+}
+
+function QuickPanel() {
+  const activeId = useSessions((s) => s.activeId)
+  const [q, setQ] = useState('')
+  const [miss, setMiss] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    const focus = (): void => inputRef.current?.focus()
+    window.addEventListener(FOCUS_TERM_SEARCH, focus)
+    return () => window.removeEventListener(FOCUS_TERM_SEARCH, focus)
+  }, [])
+
+  const find = (dir: 'next' | 'prev'): void => {
+    const h = activeId ? termRegistry.get(activeId) : undefined
+    if (!h || !q) return
+    const ok = dir === 'next' ? h.search.findNext(q) : h.search.findPrevious(q)
+    setMiss(!ok)
+  }
+  const handle = activeId ? termRegistry.get(activeId) : undefined
+
+  return (
+    <>
+      <div className={`sp-search ${miss ? 'miss' : ''}`}>
+        <IconSearch size={17} />
+        <input
+          ref={inputRef}
+          value={q}
+          placeholder="Поиск в терминале — Ctrl+Shift+F"
+          onChange={(e) => {
+            setQ(e.target.value)
+            setMiss(false)
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') find(e.shiftKey ? 'prev' : 'next')
+            if (e.key === 'Escape') {
+              handle?.search.clearDecorations()
+              handle?.term.focus()
+            }
+          }}
+        />
+        <button className="icon-btn" title="Назад (Shift+Enter)" onClick={() => find('prev')}>
+          <IconChevronDown size={16} style={{ transform: 'rotate(180deg)' }} />
+        </button>
+        <button className="icon-btn" title="Вперёд (Enter)" onClick={() => find('next')}>
+          <IconChevronDown size={16} />
+        </button>
+      </div>
+      <h3 className="sp-heading">Действия</h3>
+      <div className="sp-actions">
+        <button
+          className="sp-action"
+          onClick={() => {
+            const sel = handle?.term.getSelection()
+            if (sel) void navigator.clipboard.writeText(sel)
+          }}
+        >
+          Копировать выделение <kbd>Ctrl Shift C</kbd>
+        </button>
+        <button className="sp-action" onClick={() => void navigator.clipboard.readText().then((t) => handle?.term.paste(t))}>
+          Вставить <kbd>Ctrl Shift V</kbd>
+        </button>
+        <button className="sp-action" onClick={() => handle?.term.clear()}>
+          Очистить буфер
+        </button>
+      </div>
+    </>
+  )
+}
+
+function ThemePreview({ t }: { t: TermTheme }) {
+  const c = t.theme
+  return (
+    <span className="theme-prev" style={{ background: c.background }}>
+      <span style={{ background: c.foreground, width: '78%' }} />
+      <span style={{ background: c.foreground, width: '92%', opacity: 0.75 }} />
+      <span className="tp-row">
+        <i style={{ background: c.green }} />
+        <i style={{ background: c.blue }} />
+        <i style={{ background: c.yellow }} />
+        <b style={{ background: c.cursor }} />
+      </span>
+    </span>
+  )
+}
+
+function ThemesPanel() {
+  const { termTheme, setTermTheme, fontSize, setFontSize } = useSessions()
+  return (
+    <>
+      <div className="sp-font">
+        <span>Шрифт</span>
+        <span className="toolbar-spacer" />
+        <button className="icon-btn" onClick={() => setFontSize(fontSize - 1)} title="Меньше">
+          <IconMinus size={16} />
+        </button>
+        <span className="font-size">{fontSize}px</span>
+        <button className="icon-btn" onClick={() => setFontSize(fontSize + 1)} title="Больше">
+          <IconPlus size={16} />
+        </button>
+      </div>
+      <h3 className="sp-heading">Темы</h3>
+      <div className="theme-list">
+        {TERM_THEMES.map((t) => (
+          <button key={t.id} className={`theme-item ${termTheme === t.id ? 'active' : ''}`} onClick={() => setTermTheme(t.id)}>
+            <ThemePreview t={t} />
+            <span className="theme-text">
+              <span className="theme-name">{t.name}</span>
+              <span className="theme-note">{t.note}</span>
+            </span>
+          </button>
+        ))}
+      </div>
+    </>
+  )
+}

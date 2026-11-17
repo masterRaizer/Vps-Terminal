@@ -1,56 +1,47 @@
-import { useEffect } from 'react'
 import { useSessions } from '@/store/sessions'
-import { Logo } from './components/Logo'
-import { Sidebar } from './components/Sidebar'
-import { TabBar } from './components/TabBar'
+import { TopBar } from './components/TopBar'
+import { NavSidebar } from './components/NavSidebar'
 import { TerminalView } from './components/TerminalView'
+import { TermSidePanel } from './components/TermSidePanel'
 import { HostKeyDialog } from './components/HostKeyDialog'
 import { StatusBar } from './components/StatusBar'
-import { IconPrompt } from './components/Icons'
+import { HostsPage } from './pages/HostsPage'
+import { ForwardingPage, KeychainPage, KnownHostsPage, LogsPage, SnippetsPage } from './pages/SectionPages'
+import { SftpPage } from './pages/SftpPage'
+
+const PAGES = {
+  hosts: HostsPage,
+  keychain: KeychainPage,
+  forwarding: ForwardingPage,
+  snippets: SnippetsPage,
+  knownhosts: KnownHostsPage,
+  logs: LogsPage
+}
 
 export function App() {
-  const { tabs, activeId, theme } = useSessions()
-
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme
-  }, [theme])
-
+  const { tabs, activeId, view, section, sidePanel } = useSessions()
+  const Page = PAGES[section]
   return (
     <div className="app">
-      <header className="titlebar">
-        <Logo size={20} />
-        <span className="brand">
-          Vps Terminal <span className="brand-ssh">SSH</span>
-        </span>
-      </header>
-      <Sidebar />
-      <main className="workspace">
-        <TabBar />
-        <div className="term-stack">
-          {tabs.map((t) => (
-            <TerminalView key={t.id} tab={t} active={t.id === activeId} />
-          ))}
-          {tabs.length === 0 && (
-            <div className="welcome">
-              <Logo size={64} />
-              <h1>Vps Terminal SSH</h1>
-              <p>Введите адрес слева, чтобы открыть первую сессию.</p>
-              <ul className="hints">
-                <li>
-                  <IconPrompt size={14} /> <kbd>Ctrl Shift C</kbd> / <kbd>Ctrl Shift V</kbd> — копировать /
-                  вставить
-                </li>
-                <li>
-                  <IconPrompt size={14} /> <kbd>Ctrl Shift F</kbd> — поиск по выводу
-                </li>
-                <li>
-                  <IconPrompt size={14} /> ПКМ — копировать выделение или вставить
-                </li>
-              </ul>
-            </div>
-          )}
+      <TopBar />
+      <div className="content">
+        {view === 'vault' && (
+          <div className="vault">
+            <NavSidebar />
+            <Page />
+          </div>
+        )}
+        {view === 'sftp' && <SftpPage />}
+        {/* Terminals stay mounted while other views are shown. */}
+        <div className="term-area" style={{ display: view === 'term' ? 'flex' : 'none' }}>
+          <div className="term-stack">
+            {tabs.map((t) => (
+              <TerminalView key={t.id} tab={t} active={view === 'term' && t.id === activeId} />
+            ))}
+          </div>
+          {sidePanel && <TermSidePanel />}
         </div>
-      </main>
+      </div>
       <StatusBar />
       <HostKeyDialog />
     </div>

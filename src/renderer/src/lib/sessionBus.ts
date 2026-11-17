@@ -19,10 +19,13 @@ window.api.ssh.onData((sessionId, data) => {
 })
 
 window.api.ssh.onStatus((ev: SessionEvent) => {
-  const { tabs, patchTab } = useSessions.getState()
+  const { tabs, patchTab, log } = useSessions.getState()
   const tab = tabs.find((t) => t.sessionId === ev.sessionId)
-  if (tab) patchTab(tab.id, { status: ev.status, message: ev.message })
-  else pendingStatus.set(ev.sessionId, ev)
+  if (tab) {
+    patchTab(tab.id, { status: ev.status, message: ev.message })
+    const p = tab.params
+    log({ target: `${p.username}@${p.host}:${p.port}`, status: ev.status, message: ev.message })
+  } else pendingStatus.set(ev.sessionId, ev)
   if (ev.status === 'closed') backlog.delete(ev.sessionId)
 })
 

@@ -5,35 +5,38 @@ import { SearchAddon } from '@xterm/addon-search'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { useSessions, type Tab } from '@/store/sessions'
 import { attachData, claimStatus } from '@/lib/sessionBus'
-import { termThemes } from '@/lib/termThemes'
-import { IconClose, IconRefresh, IconSearch } from './Icons'
+import { termRegistry } from '@/lib/termRegistry'
+import { DEFAULT_TERM_THEME, termThemeById } from '@/lib/termThemes'
+import { FOCUS_TERM_SEARCH } from './TermSidePanel'
+import { IconLock, IconRefresh } from './Icons'
 
 interface Props {
   tab: Tab
   active: boolean
 }
 
+const themeOf = (id: string) => (termThemeById(id) ?? termThemeById(DEFAULT_TERM_THEME)!).theme
+
 export function TerminalView({ tab, active }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
-  const searchRef = useRef<SearchAddon | null>(null)
   const sessionRef = useRef<string | undefined>(undefined)
-  const theme = useSessions((s) => s.theme)
-  const [searchOpen, setSearchOpen] = useState(false)
-  const [query, setQuery] = useState('')
+  const themeId = useSessions((s) => s.termTheme)
+  const fontSize = useSessions((s) => s.fontSize)
 
   // Create the xterm instance once per tab.
   useEffect(() => {
+    const { termTheme, fontSize: fs } = useSessions.getState()
     const term = new Terminal({
       fontFamily: '"Cascadia Mono", "JetBrains Mono", Consolas, monospace',
-      fontSize: 14,
-      lineHeight: 1.15,
+      fontSize: fs,
+      lineHeight: 1.2,
       cursorBlink: true,
-      cursorStyle: 'bar',
+      cursorStyle: 'block',
       scrollback: 10000,
       allowProposedApi: true,
-      theme: termThemes[useSessions.getState().theme]
+      theme: themeOf(termTheme)
     })
     const fit = new FitAddon()
     const search = new SearchAddon()
@@ -49,7 +52,6 @@ export function TerminalView({ tab, active }: Props) {
     }
     fit.fit()
 
-    // Clipboard: Ctrl+Shift+C / Ctrl+Shift+V, Ctrl+Shift+F for search.
     term.attachCustomKeyEventHandler((e) => {
       if (e.type !== 'keydown' || !e.ctrlKey || !e.shiftKey) return true
       const k = e.key.toLowerCase()
@@ -63,12 +65,13 @@ export function TerminalView({ tab, active }: Props) {
         return false
       }
       if (k === 'f') {
-        setSearchOpen(true)
+        useSessions.getState().setSideTab('quick')
+        setTimeout(() => window.dispatchEvent(new Event(FOCUS_TERM_SEARCH)), 0)
         return false
       }
       return true
     })
-    // Right click pastes (copy happens via selection + Ctrl+Shift+C).
+    // Right click: copy the selection if there is one, otherwise paste.
     const onContext = (e: MouseEvent): void => {
       e.preventDefault()
       const sel = term.getSelection()
@@ -79,7 +82,8 @@ export function TerminalView({ tab, active }: Props) {
         void navigator.clipboard.readText().then((t) => term.paste(t))
       }
     }
-    hostRef.current!.addEventListener('contextmenu', onContext)
+    const el = hostRef.current!
+    el.addEventListener('contextmenu', onContext)
 
     term.onData((d) => {
       if (sessionRef.current) window.api.ssh.write(sessionRef.current, d)
@@ -90,32 +94,34 @@ export function TerminalView({ tab, active }: Props) {
 
     termRef.current = term
     fitRef.current = fit
-    searchRef.current = search
+    termRegistry.set(tab.id, { term, search })
 
     const ro = new ResizeObserver(() => {
-      if (hostRef.current && hostRef.current.offsetParent !== null) fit.fit()
+      if (el.offsetParent !== null) fit.fit()
     })
-    ro.observe(hostRef.current!)
+    ro.observe(el)
 
-    const el = hostRef.current!
     return () => {
       ro.disconnect()
       el.removeEventListener('contextmenu', onContext)
+      termRegistry.delete(tab.id)
       term.dispose()
       termRef.current = null
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Connect (and reconnect when `attempt` changes).
   useEffect(() => {
     const term = termRef.current
     if (!term) return
-    const { patchTab, takePassword } = useSessions.getState()
+    const { patchTab, takePassword, log } = useSessions.getState()
     const password = takePassword(tab.id)
     let detach: (() => void) | undefined
     let cancelled = false
+    const target = `${tab.params.username}@${tab.params.host}:${tab.params.port}`
 
-    term.writeln(`\x1b[2mПодключение к ${tab.params.username}@${tab.params.host}:${tab.params.port}…\x1b[0m`)
+    term.writeln(`\x1b[2mПодключение к ${target}…\x1b[0m`)
     patchTab(tab.id, { status: 'connecting', message: undefined })
 
     window.api.ssh
@@ -128,12 +134,13 @@ export function TerminalView({ tab, active }: Props) {
         sessionRef.current = sessionId
         detach = attachData(sessionId, (d) => term.write(d))
         const early = claimStatus(sessionId)
-        patchTab(tab.id, {
-          sessionId,
-          ...(early ? { status: early.status, message: early.message } : {})
-        })
+        patchTab(tab.id, { sessionId, ...(early ? { status: early.status, message: early.message } : {}) })
+        if (early) log({ target, status: early.status, message: early.message })
       })
-      .catch((e: Error) => patchTab(tab.id, { status: 'error', message: e.message }))
+      .catch((e: Error) => {
+        patchTab(tab.id, { status: 'error', message: e.message })
+        log({ target, status: 'error', message: e.message })
+      })
 
     return () => {
       cancelled = true
@@ -144,7 +151,6 @@ export function TerminalView({ tab, active }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab.attempt])
 
-  // Print disconnect / error notices into the buffer.
   useEffect(() => {
     const term = termRef.current
     if (!term) return
@@ -153,10 +159,15 @@ export function TerminalView({ tab, active }: Props) {
   }, [tab.status, tab.message])
 
   useEffect(() => {
-    if (termRef.current) termRef.current.options.theme = termThemes[theme]
-  }, [theme])
+    if (termRef.current) termRef.current.options.theme = themeOf(themeId)
+  }, [themeId])
 
-  // Take keyboard focus once the shell is ready (e.g. after the host-key dialog closes).
+  useEffect(() => {
+    if (!termRef.current) return
+    termRef.current.options.fontSize = fontSize
+    fitRef.current?.fit()
+  }, [fontSize])
+
   useEffect(() => {
     if (active && tab.status === 'ready') termRef.current?.focus()
   }, [active, tab.status])
@@ -170,52 +181,11 @@ export function TerminalView({ tab, active }: Props) {
     }
   }, [active])
 
-  const runSearch = (dir: 'next' | 'prev'): void => {
-    if (!query) return
-    const opts = { caseSensitive: false, decorations: undefined }
-    if (dir === 'next') searchRef.current?.findNext(query, opts)
-    else searchRef.current?.findPrevious(query, opts)
-  }
-
   const disconnected = tab.status === 'closed' || tab.status === 'error'
+  const bg = themeOf(themeId).background
 
   return (
-    <div className="term-pane" style={{ display: active ? 'flex' : 'none' }}>
-      {searchOpen && (
-        <div className="term-search">
-          <IconSearch size={14} />
-          <input
-            autoFocus
-            placeholder="Поиск в выводе"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') runSearch(e.shiftKey ? 'prev' : 'next')
-              if (e.key === 'Escape') {
-                setSearchOpen(false)
-                searchRef.current?.clearDecorations()
-                termRef.current?.focus()
-              }
-            }}
-          />
-          <button className="icon-btn" title="Назад (Shift+Enter)" onClick={() => runSearch('prev')}>
-            ↑
-          </button>
-          <button className="icon-btn" title="Вперёд (Enter)" onClick={() => runSearch('next')}>
-            ↓
-          </button>
-          <button
-            className="icon-btn"
-            title="Закрыть"
-            onClick={() => {
-              setSearchOpen(false)
-              termRef.current?.focus()
-            }}
-          >
-            <IconClose size={14} />
-          </button>
-        </div>
-      )}
+    <div className="term-pane" style={{ display: active ? 'flex' : 'none', background: bg }}>
       <div className="term-host" ref={hostRef} />
       {disconnected && <ReconnectBar tab={tab} />}
     </div>
@@ -236,17 +206,14 @@ function ReconnectBar({ tab }: { tab: Tab }) {
     >
       <span className={`dot dot-${tab.status}`} />
       <span className="reconnect-text">
-        {tab.status === 'error' ? 'Ошибка подключения' : 'Сессия завершена'}
+        {tab.status === 'error' ? `Ошибка: ${tab.message ?? 'не удалось подключиться'}` : 'Сессия завершена'}
       </span>
-      <input
-        type="password"
-        placeholder="Пароль"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-        autoComplete="off"
-      />
-      <button className="btn btn-primary" type="submit">
-        <IconRefresh size={14} /> Переподключить
+      <label className="rc-input">
+        <IconLock size={15} />
+        <input type="password" placeholder="Пароль" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="off" />
+      </label>
+      <button className="btn-cta small" type="submit">
+        <IconRefresh size={16} /> Переподключить
       </button>
     </form>
   )

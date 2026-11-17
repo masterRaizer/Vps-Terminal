@@ -19,7 +19,7 @@ export function HostKeyDialog() {
     <div className="modal-backdrop">
       <div className="modal" role="dialog" aria-modal="true" aria-labelledby="hk-title">
         <div className="modal-icon">
-          <IconShield size={22} />
+          <IconShield size={24} />
         </div>
         <h2 id="hk-title">Проверьте ключ сервера</h2>
         <p>
