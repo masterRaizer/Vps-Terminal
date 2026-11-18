@@ -12,11 +12,33 @@ function attrsOf(st) {
  * Starts a server on 127.0.0.1. `auth(ctx)` returns true to accept.
  * Remote paths are absolute and mapped under `root`. Returns { server, port, close }.
  */
-function startSftpServer({ root, auth, shell }) {
+function startSftpServer({ root, auth, shell, port = 0 }) {
   const hostKey = utils.generateKeyPairSync('ed25519').private
+  const clients = new Set()
   const server = new Server({ hostKeys: [hostKey] }, (client) => {
+    clients.add(client)
+    client.on('close', () => clients.delete(client))
     client.on('authentication', (ctx) => (auth(ctx) ? ctx.accept() : ctx.reject()))
     client.on('error', () => {})
+    // Port forwarding: direct-tcpip (-L/-D) and tcpip-forward (-R).
+    client.on('tcpip', (accept, _reject, info) => {
+      const ch = accept()
+      const s = require('net').connect(info.destPort, info.destIP)
+      ch.on('error', () => s.destroy())
+      s.on('error', () => ch.destroy())
+      ch.pipe(s).pipe(ch)
+    })
+    client.on('request', (accept, reject, name, info) => {
+      if (name !== 'tcpip-forward') return reject && reject()
+      const srv = require('net').createServer((sock) => {
+        client.forwardOut(info.bindAddr, srv.address().port, sock.remoteAddress, sock.remotePort, (err, ch) => {
+          if (err) return sock.destroy()
+          sock.pipe(ch).pipe(sock)
+        })
+      })
+      srv.listen(info.bindPort, info.bindAddr, () => accept && accept(srv.address().port))
+      client.on('close', () => srv.close())
+    })
     client.on('session', (accept) => {
       const session = accept()
       session.on('pty', (a) => a && a())
@@ -80,7 +102,7 @@ function startSftpServer({ root, auth, shell }) {
     })
   })
   return new Promise((resolve) =>
-    server.listen(0, '127.0.0.1', () => resolve({ server, port: server.address().port, close: () => server.close() }))
+    server.listen(port, '127.0.0.1', () => resolve({ server, port: server.address().port, close: () => new Promise((r) => { for (const c of clients) c.end(); server.close(() => r()) }) }))
   )
 }
 

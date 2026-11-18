@@ -23,9 +23,11 @@ export interface HostOptions {
   env: Record<string, string>
   /** Terminal theme override for this host; null = global theme. */
   termTheme: string | null
+  /** Snippet sent once the shell is ready. */
+  startupSnippetId: string | null
 }
 
-export const DEFAULT_HOST_OPTIONS: HostOptions = { backspace: 'del', agentForward: false, env: {}, termTheme: null }
+export const DEFAULT_HOST_OPTIONS: HostOptions = { backspace: 'del', agentForward: false, env: {}, termTheme: null, startupSnippetId: null }
 
 export interface Host {
   id: string
@@ -162,8 +164,71 @@ export interface VaultSnapshot {
   keys: SshKey[]
   identities: Identity[]
   integrations: Integration[]
+  snippets: Snippet[]
+  forwards: ForwardRule[]
+  knownHosts: KnownHost[]
   /** False when the OS credential store is unavailable and secrets live only in memory. */
   secretsPersistent: boolean
 }
 
 export const HOST_COLORS = ['#0d4a80', '#e5541b', '#157a52', '#7a3db8', '#b8336a', '#a87a12', '#2f7f8f', '#4a5068'] as const
+
+export interface Snippet {
+  id: string
+  label: string
+  command: string
+  tags: string[]
+  createdAt: number
+  updatedAt: number
+}
+
+export interface SnippetInput {
+  id?: string
+  label: string
+  command: string
+  tags: string[]
+}
+
+export interface KnownHost {
+  host: string
+  port: number
+  algorithm: string
+  fingerprint: string
+  addedAt: number
+  lastSeenAt: number | null
+}
+
+export type ForwardKind = 'local' | 'remote' | 'dynamic'
+
+export interface ForwardRule {
+  id: string
+  label: string
+  hostId: string
+  kind: ForwardKind
+  bindAddress: string
+  bindPort: number
+  /** Destination for local/remote forwards; unused for dynamic (SOCKS). */
+  destHost: string
+  destPort: number
+  autoStart: boolean
+  createdAt: number
+}
+
+export type ForwardRuleInput = Omit<ForwardRule, 'id' | 'createdAt'> & { id?: string }
+
+export type TunnelState = 'starting' | 'active' | 'error' | 'stopped'
+
+export interface TunnelStatus {
+  ruleId: string
+  state: TunnelState
+  connections: number
+  message?: string
+}
+
+export interface SnippetRun {
+  id: string
+  snippetId: string | null
+  hostId: string | null
+  command: string
+  at: number
+}

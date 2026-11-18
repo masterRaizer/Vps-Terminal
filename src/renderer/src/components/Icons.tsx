@@ -329,3 +329,8 @@ export const IconPrompt = (p: P) => (
     <path d="M5 7l5 5-5 5M12.5 17H19" />
   </Base>
 )
+export const IconPlay = (p: P) => (
+  <Base {...p}>
+    <path d="M8 5.5v13l10.5-6.5L8 5.5z" fill="currentColor" />
+  </Base>
+)

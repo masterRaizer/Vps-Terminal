@@ -22,41 +22,6 @@ function Placeholder({ toolbar, title, icon, heading, text }: { toolbar: ReactNo
   )
 }
 
-export const ForwardingPage = () => (
-  <Placeholder
-    toolbar={<SplitButton icon={<IconPlus size={18} />} label="Новое правило" disabled title="Шаг 4" />}
-    title="Правила проброса"
-    icon={<IconForward size={26} />}
-    heading="Туннелей нет"
-    text="Локальный, удалённый и динамический (SOCKS) проброс портов со списком активных туннелей — шаг 4."
-  />
-)
-
-export const SnippetsPage = () => (
-  <Placeholder
-    toolbar={
-      <>
-        <SplitButton icon={<IconPlus size={18} />} label="Новый сниппет" disabled title="Шаг 4" />
-        <ToolButton icon={<IconHistory size={18} />} label="История команд" disabled />
-      </>
-    }
-    title="Сниппеты"
-    icon={<IconBraces size={26} />}
-    heading="Сниппетов пока нет"
-    text="Библиотека команд с переменными и вставкой в активную сессию — шаг 4."
-  />
-)
-
-export const KnownHostsPage = () => (
-  <Placeholder
-    toolbar={<ToolButton icon={<IconPlus size={18} />} label="Импорт known_hosts" disabled />}
-    title="Известные хосты"
-    icon={<IconFingerprint size={26} />}
-    heading="Список пуст"
-    text="Доверенные отпечатки серверов (TOFU) и предупреждение при смене ключа — шаг 4. Сейчас отпечаток подтверждается при каждом подключении."
-  />
-)
-
 const STATUS_LABEL = { connecting: 'Подключение', ready: 'Подключено', closed: 'Отключено', error: 'Ошибка' } as const
 
 export function LogsPage() {

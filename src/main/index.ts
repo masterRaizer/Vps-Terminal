@@ -17,6 +17,9 @@ import { GeoIp } from './geoip'
 import { RemnawaveSync } from './remnawave'
 import { SftpManager } from './sftp-manager'
 import { localHome, localList, localMkdir, localPath, localRename, localRoots } from './local-fs'
+import { parseKnownHosts, ToolsRepo } from './tools-repo'
+import { ForwardManager } from './forward-manager'
+import { fingerprintOf } from './ssh-keys'
 
 const APP_NAME = 'Vps Terminal SSH'
 let mainWindow: BrowserWindow | null = null
@@ -24,6 +27,7 @@ let vault: VaultService
 let keys: KeyService
 let catalog: CatalogRepo
 let remnawave: RemnawaveSync
+let tools: ToolsRepo
 
 const str = (v: unknown, name: string, max = 512): string => {
   if (typeof v !== 'string' || v.length > max) throw new Error(`Неверное поле: ${name}`)
@@ -31,20 +35,23 @@ const str = (v: unknown, name: string, max = 512): string => {
 }
 const pendingHostKeys = new Map<string, (accept: boolean) => void>()
 
-// Fingerprints the user trusted during this run (persistent known_hosts arrive in step 4).
-const trustedThisRun = new Map<string, string>()
-
-const askHostKey = (info: Omit<HostKeyPrompt, 'requestId'>): Promise<boolean> =>
+/** Trust on first use against the persistent known_hosts store. */
+const askHostKey = (info: Omit<HostKeyPrompt, 'requestId' | 'kind' | 'previous'>): Promise<boolean> =>
   new Promise<boolean>((resolve) => {
-    const id = `${info.host}:${info.port}`
-    if (trustedThisRun.get(id) === info.fingerprint) return resolve(true)
+    const check = tools.checkHostKey(info.host, info.port, info.algorithm, info.fingerprint)
+    if (check.status === 'known') return resolve(true)
     if (!mainWindow) return resolve(false)
     const requestId = crypto.randomUUID()
     pendingHostKeys.set(requestId, (ok) => {
-      if (ok) trustedThisRun.set(id, info.fingerprint)
+      if (ok) tools.trustHostKey(info.host, info.port, info.algorithm, info.fingerprint)
       resolve(ok)
     })
-    const prompt: HostKeyPrompt = { requestId, ...info }
+    const prompt: HostKeyPrompt = {
+      requestId,
+      ...info,
+      kind: check.status,
+      previous: check.status === 'changed' ? { algorithm: check.previous.algorithm, fingerprint: check.previous.fingerprint, addedAt: check.previous.addedAt } : undefined
+    }
     mainWindow.webContents.send(IPC.hostKeyPrompt, prompt)
   })
 
@@ -53,6 +60,16 @@ const ssh = new SshManager({
   onStatus: (ev) => mainWindow?.webContents.send(IPC.sshStatus, ev),
   verifyHostKey: askHostKey
 })
+
+const forwards = new ForwardManager(askHostKey, (st) => mainWindow?.webContents.send(IPC.forwardStatus, st))
+
+async function startForward(id: string): Promise<void> {
+  const rule = tools.getForward(id)
+  if (!rule) throw new Error('Правило не найдено')
+  const c = await vault.resolveForConnect(rule.hostId)
+  if (!c.password && !c.privateKey && !c.agent) throw new Error('Для туннеля нужен сохранённый пароль, ключ или SSH-агент у хоста')
+  await forwards.start(rule, { host: c.host.address, port: c.host.port, username: c.username, password: c.password ?? undefined, privateKey: c.privateKey, passphrase: c.passphrase, agent: c.agent })
+}
 
 const sftp = new SftpManager(
   askHostKey,
@@ -83,7 +100,10 @@ function createWindow(): void {
     }
   })
 
-  mainWindow.once('ready-to-show', () => mainWindow?.show())
+  mainWindow.once('ready-to-show', () => {
+    mainWindow?.show()
+    for (const r of tools.listForwards()) if (r.autoStart) void startForward(r.id).catch((e) => console.warn(`Автозапуск туннеля ${r.id}:`, (e as Error).message))
+  })
 
   // Never open new Electron windows; send http(s) links to the OS browser.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -180,6 +200,51 @@ function registerIpc(): void {
     const err = await shell.openPath(target)
     if (err) throw new Error(err)
   })
+
+  ipcMain.handle(IPC.snippetSave, (_e, sn: unknown) => tools.saveSnippet(sn))
+  ipcMain.handle(IPC.snippetDelete, (_e, id: unknown) => tools.deleteSnippet(str(id, 'id', 64)))
+  ipcMain.on(IPC.snippetRecord, (_e, sid: unknown, hid: unknown, cmd: unknown) => {
+    if (typeof cmd !== 'string') return
+    try {
+      tools.recordRun(typeof sid === 'string' ? sid : null, typeof hid === 'string' ? hid : null, cmd)
+    } catch {
+      /* unknown snippet/host id — history is best effort */
+    }
+  })
+  ipcMain.handle(IPC.snippetRuns, (_e, hid: unknown) => tools.runs(typeof hid === 'string' ? hid : null))
+  ipcMain.handle(IPC.knownForget, (_e, host: unknown, port: unknown, alg: unknown) =>
+    tools.forgetHostKey(str(host, 'host', 255), Number(port), typeof alg === 'string' ? alg : undefined)
+  )
+  ipcMain.handle(IPC.knownImport, async () => {
+    if (!mainWindow) return null
+    const pick = await dialog.showOpenDialog(mainWindow, { title: 'Импорт known_hosts', properties: ['openFile', 'showHiddenFiles'] })
+    if (pick.canceled || !pick.filePaths[0]) return null
+    if ((await stat(pick.filePaths[0])).size > 5 * 1024 * 1024) throw new Error('Файл больше 5 МБ')
+    const { entries, skipped } = parseKnownHosts(await readFile(pick.filePaths[0], 'utf-8'))
+    let added = 0
+    let bad = skipped
+    for (const e of entries) {
+      try {
+        tools.trustHostKey(e.host, e.port, e.algorithm, fingerprintOf(Buffer.from(e.keyB64, 'base64')))
+        added++
+      } catch {
+        bad++
+      }
+    }
+    return { added, skipped: bad }
+  })
+  ipcMain.handle(IPC.forwardSave, (_e, r: unknown) => {
+    const rule = tools.saveForward(r)
+    if (forwards.isRunning(rule.id)) void startForward(rule.id).catch(() => undefined)
+    return rule
+  })
+  ipcMain.handle(IPC.forwardDelete, (_e, id: unknown) => {
+    forwards.stop(str(id, 'id', 64))
+    tools.deleteForward(str(id, 'id', 64))
+  })
+  ipcMain.handle(IPC.forwardStart, (_e, id: unknown) => startForward(str(id, 'id', 64)))
+  ipcMain.handle(IPC.forwardStop, (_e, id: unknown) => forwards.stop(str(id, 'id', 64)))
+  ipcMain.handle(IPC.forwardStatuses, () => forwards.statuses())
 
   ipcMain.handle(IPC.vaultSnapshot, () => vault.snapshot())
   ipcMain.handle(IPC.vaultSaveHost, (_e, host: unknown, password: unknown) => vault.saveHost(host, password))
@@ -309,7 +374,8 @@ if (!app.requestSingleInstanceLock()) {
       : [join(app.getAppPath(), 'resources', 'geoip'), join(__dirname, '..', '..', 'resources', 'geoip')].find((d) => existsSync(join(d, 'country-v4.bin'))) ?? ''
     const geo = new GeoIp(geoDir)
     keys = new KeyService(catalog, repo, new DataKeyCipher(secrets), secrets)
-    vault = new VaultService(repo, secrets, { catalog, keys, geo })
+    tools = new ToolsRepo(db)
+    vault = new VaultService(repo, secrets, { catalog, keys, geo, tools })
     remnawave = new RemnawaveSync(catalog, repo, secrets, geo)
     await vault.backfillCountries().catch((e) => console.warn('GeoIP backfill failed:', e))
     registerIpc()
@@ -323,5 +389,6 @@ if (!app.requestSingleInstanceLock()) {
 app.on('window-all-closed', () => {
   ssh.disconnectAll()
   sftp.closeAll()
+  forwards.stopAll()
   if (process.platform !== 'darwin') app.quit()
 })

@@ -1,5 +1,6 @@
 /** IPC contract shared by main, preload and renderer. */
 import type { Listing, TransferEvent } from './files'
+import type { ForwardRule, ForwardRuleInput, KnownHost, Snippet, SnippetRun, TunnelStatus } from './vault'
 import type { Group, GroupInput, Host, HostInput, Identity, IdentityInput, Integration, IntegrationInput, KeyImportResult, PasswordChange, SshKey, SyncResult, VaultSnapshot } from './vault'
 
 export interface ConnectRequest {
@@ -37,6 +38,9 @@ export interface HostKeyPrompt {
   algorithm: string
   /** SHA256 fingerprint, OpenSSH style: "SHA256:base64" */
   fingerprint: string
+  /** new = never seen; changed = differs from the stored key (possible MITM). */
+  kind: 'new' | 'changed'
+  previous?: { algorithm: string; fingerprint: string; addedAt: number }
 }
 
 export type SessionStatus = 'connecting' | 'ready' | 'closed' | 'error'
@@ -95,7 +99,19 @@ export const IPC = {
   localMkdir: 'local:mkdir',
   localRename: 'local:rename',
   localTrash: 'local:trash',
-  localOpen: 'local:open'
+  localOpen: 'local:open',
+  snippetSave: 'snippet:save',
+  snippetDelete: 'snippet:delete',
+  snippetRecord: 'snippet:record',
+  snippetRuns: 'snippet:runs',
+  knownForget: 'known:forget',
+  knownImport: 'known:import',
+  forwardSave: 'forward:save',
+  forwardDelete: 'forward:delete',
+  forwardStart: 'forward:start',
+  forwardStop: 'forward:stop',
+  forwardStatuses: 'forward:statuses',
+  forwardStatus: 'forward:status'
 } as const
 
 export interface AppInfo {
@@ -169,6 +185,26 @@ export interface VpsApi {
     open(path: string): Promise<void>
     /** Absolute path of a file dropped from the OS (Electron webUtils). */
     pathForFile(file: File): string
+  }
+  snippets: {
+    save(s: { id?: string; label: string; command: string; tags: string[] }): Promise<Snippet>
+    delete(id: string): Promise<void>
+    /** Remembers that a snippet was sent to a host (history panel). */
+    record(snippetId: string | null, hostId: string | null, command: string): void
+    runs(hostId: string | null): Promise<SnippetRun[]>
+  }
+  knownHosts: {
+    forget(host: string, port: number, algorithm?: string): Promise<void>
+    /** Imports an OpenSSH known_hosts file chosen in a dialog; null when cancelled. */
+    import(): Promise<{ added: number; skipped: number } | null>
+  }
+  forwards: {
+    save(rule: ForwardRuleInput): Promise<ForwardRule>
+    delete(id: string): Promise<void>
+    start(id: string): Promise<void>
+    stop(id: string): Promise<void>
+    statuses(): Promise<TunnelStatus[]>
+    onStatus(cb: (s: TunnelStatus) => void): () => void
   }
   integrations: {
     save(input: IntegrationInput, secret?: string): Promise<Integration>

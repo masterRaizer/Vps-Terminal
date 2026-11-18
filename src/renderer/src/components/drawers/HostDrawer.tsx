@@ -53,7 +53,7 @@ function textToEnv(text: string): Record<string, string> {
 }
 
 export function HostDrawer({ hostId, groupId }: { hostId?: string; groupId?: string | null }) {
-  const { hosts, groups, keys, identities, secretsPersistent, saveHost, deleteHost, edit } = useVault()
+  const { hosts, groups, keys, identities, snippets, secretsPersistent, saveHost, deleteHost, edit } = useVault()
   const existing: Host | undefined = hostId ? hosts.find((h) => h.id === hostId) : undefined
   const [form, setForm] = useState<HostInput>(() => (existing ? toInput(existing) : emptyHost(groupId ?? null)))
   const [password, setPassword] = useState('')
@@ -394,7 +394,14 @@ export function HostDrawer({ hostId, groupId }: { hostId?: string; groupId?: str
             ]}
             onPick={(v) => setOpt('agentForward', v === 'on')}
           />
-          <PickerRow icon={<IconBraces size={18} />} placeholder="Стартовый сниппет" options={[]} onPick={() => {}} disabled right="шаг 4" title="Сниппеты — шаг 4" display={<span className="ph">Стартовый сниппет</span>} />
+          <PickerRow
+            icon={<IconBraces size={18} />}
+            placeholder="Стартовый сниппет"
+            value={form.options.startupSnippetId ?? ''}
+            display={form.options.startupSnippetId ? undefined : <span className="ph">Стартовый сниппет</span>}
+            options={[{ value: '', label: 'Без стартового сниппета' }, ...snippets.map((sn) => ({ value: sn.id, label: sn.label, hint: sn.command.split('\n')[0].slice(0, 30) }))]}
+            onPick={(v) => setOpt('startupSnippetId', v || null)}
+          />
           <PickerRow icon={<IconChain size={18} />} placeholder="Цепочка хостов" options={[]} onPick={() => {}} disabled right="позже" title="Jump-хосты — после шага 4" display={<span className="ph">Цепочка хостов</span>} />
           <PickerRow icon={<IconProxy size={18} />} placeholder="Прокси" options={[]} onPick={() => {}} disabled right="позже" title="SOCKS/HTTP-прокси — после шага 4" display={<span className="ph">Прокси</span>} />
           <button type="button" className={`iinput picker-btn ${envCount ? 'has-value' : ''}`} onClick={() => setEnvOpen((o) => !o)}>

@@ -121,9 +121,9 @@ describe('memory fallback', () => {
 describe('host options', () => {
   it('round-trips options and validates env names', async () => {
     const h = await svc.saveHost(baseHost, undefined)
-    expect(h.options).toEqual({ backspace: 'ctrl-h', agentForward: true, env: { LANG: 'C.UTF-8' }, termTheme: 'glacier' })
+    expect(h.options).toEqual({ backspace: 'ctrl-h', agentForward: true, env: { LANG: 'C.UTF-8' }, termTheme: 'glacier', startupSnippetId: null })
     await expect(svc.saveHost({ ...baseHost, options: { env: { 'BAD NAME': 'x' } } }, undefined)).rejects.toThrow(/недопустимое имя/)
     const d = await svc.saveHost({ ...baseHost, options: undefined }, undefined)
-    expect(d.options).toEqual({ backspace: 'del', agentForward: false, env: {}, termTheme: null })
+    expect(d.options).toEqual({ backspace: 'del', agentForward: false, env: {}, termTheme: null, startupSnippetId: null })
   })
 })

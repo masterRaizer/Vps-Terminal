@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Group, GroupInput, Host, HostInput, Identity, Integration, PasswordChange, SshKey } from '@shared/vault'
+import type { ForwardRule, Group, GroupInput, Host, HostInput, Identity, Integration, KnownHost, PasswordChange, Snippet, SshKey, TunnelStatus } from '@shared/vault'
 import { errorText } from '@/lib/errors'
 
 export type Editing =
@@ -9,6 +9,8 @@ export type Editing =
   | { kind: 'key'; id?: string; mode?: 'generate' | 'paste' }
   | { kind: 'identity'; id?: string }
   | { kind: 'integration'; id?: string }
+  | { kind: 'snippet'; id?: string }
+  | { kind: 'forward'; id?: string }
   | null
 
 interface VaultState {
@@ -17,6 +19,10 @@ interface VaultState {
   keys: SshKey[]
   identities: Identity[]
   integrations: Integration[]
+  snippets: Snippet[]
+  forwards: ForwardRule[]
+  knownHosts: KnownHost[]
+  tunnels: Record<string, TunnelStatus>
   secretsPersistent: boolean
   loaded: boolean
   error?: string
@@ -47,6 +53,10 @@ export const useVault = create<VaultState>((set, get) => ({
   keys: [],
   identities: [],
   integrations: [],
+  snippets: [],
+  forwards: [],
+  knownHosts: [],
+  tunnels: {},
   secretsPersistent: true,
   loaded: false,
   currentGroupId: null,
@@ -62,6 +72,9 @@ export const useVault = create<VaultState>((set, get) => ({
         keys: s.keys,
         identities: s.identities,
         integrations: s.integrations,
+        snippets: s.snippets,
+        forwards: s.forwards,
+        knownHosts: s.knownHosts,
         secretsPersistent: s.secretsPersistent,
         loaded: true,
         error: undefined
@@ -129,3 +142,6 @@ export async function vaultCall<T>(p: Promise<T>): Promise<T> {
     await useVault.getState().load()
   }
 }
+
+window.api.forwards.onStatus((st) => useVault.setState((s) => ({ tunnels: { ...s.tunnels, [st.ruleId]: st } })))
+void window.api.forwards.statuses().then((list) => useVault.setState({ tunnels: Object.fromEntries(list.map((t) => [t.ruleId, t])) }))

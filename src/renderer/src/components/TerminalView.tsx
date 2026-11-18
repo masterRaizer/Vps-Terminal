@@ -9,6 +9,8 @@ import { termRegistry } from '@/lib/termRegistry'
 import { DEFAULT_TERM_THEME, fontStack, termThemeById } from '@/lib/termThemes'
 import { FOCUS_TERM_SEARCH } from './TermSidePanel'
 import { errorText } from '@/lib/errors'
+import { useVault } from '@/store/vault'
+import { fillSnippet, toShellInput } from '@shared/snippets'
 import { usePassphrasePrompt } from './PassphrasePrompt'
 import { IconLock, IconRefresh } from './Icons'
 
@@ -205,6 +207,25 @@ export function TerminalView({ tab, active, rect, inSplit }: Props) {
   useEffect(() => {
     if (active && tab.status === 'ready') termRef.current?.focus()
   }, [active, tab.status])
+
+  // Startup snippet: once per (re)connect, when the shell is ready.
+  const startupSent = useRef(0)
+  useEffect(() => {
+    if (tab.status !== 'ready' || !tab.hostId || startupSent.current === tab.attempt) return
+    startupSent.current = tab.attempt
+    const v = useVault.getState()
+    const sid = v.hosts.find((h) => h.id === tab.hostId)?.options.startupSnippetId
+    const sn = sid ? v.snippets.find((x) => x.id === sid) : undefined
+    if (sn && tab.sessionId) {
+      const cmd = fillSnippet(sn.command, {})
+      setTimeout(() => {
+        if (tab.sessionId) {
+          window.api.ssh.write(tab.sessionId, toShellInput(cmd, true))
+          window.api.snippets.record(sn.id, tab.hostId ?? null, cmd)
+        }
+      }, 300)
+    }
+  }, [tab.status, tab.attempt, tab.hostId, tab.sessionId])
 
   const rectKey = rect ? `${rect.left}|${rect.top}|${rect.width}|${rect.height}` : ''
   useEffect(() => {

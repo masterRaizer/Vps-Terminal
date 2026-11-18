@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron'
 import { IPC, type HostKeyPrompt, type SessionEvent, type VpsApi } from '@shared/ipc'
 import type { TransferEvent } from '@shared/files'
+import type { TunnelStatus } from '@shared/vault'
 
 function subscribe<A extends unknown[]>(channel: string, cb: (...args: A) => void): () => void {
   const listener = (_e: IpcRendererEvent, ...args: unknown[]): void => cb(...(args as A))
@@ -66,6 +67,24 @@ const api: VpsApi = {
     trash: (path) => ipcRenderer.invoke(IPC.localTrash, path),
     open: (path) => ipcRenderer.invoke(IPC.localOpen, path),
     pathForFile: (file) => webUtils.getPathForFile(file)
+  },
+  snippets: {
+    save: (sn) => ipcRenderer.invoke(IPC.snippetSave, sn),
+    delete: (id) => ipcRenderer.invoke(IPC.snippetDelete, id),
+    record: (sid, hid, cmd) => ipcRenderer.send(IPC.snippetRecord, sid, hid, cmd),
+    runs: (hid) => ipcRenderer.invoke(IPC.snippetRuns, hid)
+  },
+  knownHosts: {
+    forget: (host, port, alg) => ipcRenderer.invoke(IPC.knownForget, host, port, alg),
+    import: () => ipcRenderer.invoke(IPC.knownImport)
+  },
+  forwards: {
+    save: (r) => ipcRenderer.invoke(IPC.forwardSave, r),
+    delete: (id) => ipcRenderer.invoke(IPC.forwardDelete, id),
+    start: (id) => ipcRenderer.invoke(IPC.forwardStart, id),
+    stop: (id) => ipcRenderer.invoke(IPC.forwardStop, id),
+    statuses: () => ipcRenderer.invoke(IPC.forwardStatuses),
+    onStatus: (cb) => subscribe<[TunnelStatus]>(IPC.forwardStatus, cb)
   },
   integrations: {
     save: (input, secret) => ipcRenderer.invoke(IPC.integrationSave, input, secret),

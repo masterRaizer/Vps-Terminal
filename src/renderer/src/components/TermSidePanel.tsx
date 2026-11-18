@@ -6,7 +6,9 @@ import { useSftp } from '@/store/sftp'
 import { termRegistry } from '@/lib/termRegistry'
 import { TERM_FONTS, TERM_THEMES, type TermTheme } from '@/lib/termThemes'
 import { EmptyState } from './ui'
-import { IconBraces, IconChevronDown, IconClock, IconMinus, IconPalette, IconPlus, IconRocket, IconSearch } from './Icons'
+import { sendToTerminal } from '@/lib/runSnippet'
+import type { SnippetRun } from '@shared/vault'
+import { IconBraces, IconChevronDown, IconClock, IconMinus, IconPalette, IconPlay, IconPlus, IconRocket, IconSearch } from './Icons'
 
 export const FOCUS_TERM_SEARCH = 'vts:focus-term-search'
 
@@ -31,19 +33,8 @@ export function TermSidePanel() {
       </div>
       <div className="sp-body">
         {sideTab === 'quick' && <QuickPanel />}
-        {sideTab === 'snippets' && (
-          <>
-            <div className="sp-row">
-              <button className="tool" disabled title="Шаг 4">
-                <IconBraces size={16} /> Новый сниппет
-              </button>
-            </div>
-            <EmptyState icon={<IconBraces size={24} />} title="Сниппетов нет" text="Команды из библиотеки можно будет вставлять в сессию в один клик (шаг 4)." />
-          </>
-        )}
-        {sideTab === 'history' && (
-          <EmptyState icon={<IconClock size={24} />} title="Истории команд нет" text="История введённых команд для этого хоста появится вместе со сниппетами." />
-        )}
+        {sideTab === 'snippets' && <SnippetsPanel />}
+        {sideTab === 'history' && <HistoryPanel />}
         {sideTab === 'themes' && <ThemesPanel />}
       </div>
     </aside>
@@ -194,5 +185,75 @@ function ThemesPanel() {
         ))}
       </div>
     </>
+  )
+}
+
+function SnippetsPanel() {
+  const snippets = useVault((s) => s.snippets)
+  const ready = useSessions((s) => s.tabs.find((t) => t.id === s.activeId)?.status === 'ready')
+  const [q, setQ] = useState('')
+  const query = q.trim().toLowerCase()
+  const list = snippets.filter((s) => !query || `${s.label} ${s.command} ${s.tags.join(' ')}`.toLowerCase().includes(query))
+  return (
+    <>
+      <div className="sp-row sp-row-flex">
+        <button
+          className="tool"
+          onClick={() => {
+            useSessions.getState().showVault('snippets')
+            useVault.getState().edit({ kind: 'snippet' })
+          }}
+        >
+          <IconBraces size={16} /> Новый сниппет
+        </button>
+      </div>
+      <div className="sp-search small">
+        <IconSearch size={15} />
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Поиск" />
+      </div>
+      {!ready && <p className="hint pad">Сниппеты вставляются в активную подключённую сессию.</p>}
+      <div className="snip-list">
+        {list.map((s) => (
+          <div key={s.id} className="snip-item">
+            <button className="snip-main" disabled={!ready} title="Вставить без выполнения" onClick={() => void sendToTerminal(s, false)}>
+              <span className="snip-title">
+                <IconBraces size={14} /> {s.label}
+              </span>
+              <span className="snip-cmd">{s.command.split('\n')[0]}</span>
+            </button>
+            <button className="icon-btn small run" disabled={!ready} title="Выполнить" onClick={() => void sendToTerminal(s, true)}>
+              <IconPlay size={14} />
+            </button>
+          </div>
+        ))}
+        {!list.length && <EmptyState icon={<IconBraces size={24} />} title={query ? 'Ничего не найдено' : 'Сниппетов нет'} text="Создайте сниппет — он появится здесь." />}
+      </div>
+    </>
+  )
+}
+
+function HistoryPanel() {
+  const tab = useSessions((s) => s.tabs.find((t) => t.id === s.activeId))
+  const [runs, setRuns] = useState<SnippetRun[]>([])
+  useEffect(() => {
+    let alive = true
+    const load = (): void => void window.api.snippets.runs(tab?.hostId ?? null).then((r) => alive && setRuns(r))
+    load()
+    const t = setInterval(load, 3000)
+    return () => {
+      alive = false
+      clearInterval(t)
+    }
+  }, [tab?.hostId])
+  if (!runs.length) return <EmptyState icon={<IconClock size={24} />} title="Истории нет" text="Здесь появятся команды, отправленные в этот хост из сниппетов. Набранное вручную не записывается — там могут быть пароли." />
+  return (
+    <div className="snip-list">
+      {runs.map((r) => (
+        <button key={r.id} className="snip-main hist" disabled={tab?.status !== 'ready'} onClick={() => void sendToTerminal({ label: 'История', command: r.command }, false, { askVariables: false })}>
+          <span className="snip-cmd">{r.command}</span>
+          <span className="hist-time">{new Date(r.at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</span>
+        </button>
+      ))}
+    </div>
   )
 }

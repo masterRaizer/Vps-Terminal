@@ -100,7 +100,8 @@ export function validateOptions(raw: unknown): HostOptions {
     backspace: r.backspace === 'ctrl-h' ? 'ctrl-h' : 'del',
     agentForward: r.agentForward === true,
     env,
-    termTheme: (theme as string | null | undefined) ?? null
+    termTheme: (theme as string | null | undefined) ?? null,
+    startupSnippetId: typeof r.startupSnippetId === 'string' && r.startupSnippetId.length <= 64 ? r.startupSnippetId : null
   }
 }
 

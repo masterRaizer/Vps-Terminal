@@ -75,7 +75,44 @@ const MIGRATIONS: string[] = [
    ALTER TABLE hosts ADD COLUMN source TEXT;
    ALTER TABLE hosts ADD COLUMN external_id TEXT;
    CREATE INDEX hosts_source ON hosts(source, external_id);
-   UPDATE hosts SET key_hint = substr(notes, 7) WHERE notes LIKE 'Ключ: %' AND auth = 'key';`
+   UPDATE hosts SET key_hint = substr(notes, 7) WHERE notes LIKE 'Ключ: %' AND auth = 'key';`,
+  `CREATE TABLE snippets (
+     id TEXT PRIMARY KEY,
+     label TEXT NOT NULL,
+     command TEXT NOT NULL,
+     tags TEXT NOT NULL DEFAULT '[]',
+     created_at INTEGER NOT NULL,
+     updated_at INTEGER NOT NULL
+   );
+   CREATE TABLE snippet_runs (
+     id TEXT PRIMARY KEY,
+     snippet_id TEXT REFERENCES snippets(id) ON DELETE SET NULL,
+     host_id TEXT REFERENCES hosts(id) ON DELETE CASCADE,
+     command TEXT NOT NULL,
+     at INTEGER NOT NULL
+   );
+   CREATE INDEX snippet_runs_host ON snippet_runs(host_id, at);
+   CREATE TABLE known_hosts (
+     host TEXT NOT NULL,
+     port INTEGER NOT NULL,
+     algorithm TEXT NOT NULL,
+     fingerprint TEXT NOT NULL,
+     added_at INTEGER NOT NULL,
+     last_seen_at INTEGER,
+     PRIMARY KEY (host, port, algorithm)
+   );
+   CREATE TABLE forwards (
+     id TEXT PRIMARY KEY,
+     label TEXT NOT NULL,
+     host_id TEXT NOT NULL REFERENCES hosts(id) ON DELETE CASCADE,
+     kind TEXT NOT NULL CHECK (kind IN ('local','remote','dynamic')),
+     bind_address TEXT NOT NULL,
+     bind_port INTEGER NOT NULL,
+     dest_host TEXT NOT NULL DEFAULT '',
+     dest_port INTEGER NOT NULL DEFAULT 0,
+     auto_start INTEGER NOT NULL DEFAULT 0,
+     created_at INTEGER NOT NULL
+   );`
 ]
 
 export function openDb(file: string): Db {

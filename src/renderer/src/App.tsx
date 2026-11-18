@@ -12,7 +12,11 @@ import { TermSidePanel } from './components/TermSidePanel'
 import { HostKeyDialog } from './components/HostKeyDialog'
 import { StatusBar } from './components/StatusBar'
 import { HostsPage } from './pages/HostsPage'
-import { ForwardingPage, KnownHostsPage, LogsPage, SnippetsPage } from './pages/SectionPages'
+import { LogsPage } from './pages/SectionPages'
+import { ForwardingPage } from './pages/ForwardingPage'
+import { KnownHostsPage } from './pages/KnownHostsPage'
+import { SnippetsPage } from './pages/SnippetsPage'
+import { SnippetVarsDialog } from './components/SnippetVarsDialog'
 import { KeychainPage } from './pages/KeychainPage'
 import { SftpPage } from './pages/SftpPage'
 
@@ -73,6 +77,7 @@ export function App() {
       <PassphrasePrompt />
       <ChmodDialog />
       <InputDialog />
+      <SnippetVarsDialog />
     </div>
   )
 }

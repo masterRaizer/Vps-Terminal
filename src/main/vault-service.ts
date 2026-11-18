@@ -4,6 +4,7 @@ import { validateGroupInput, validateHostInput, VaultRepo } from './vault-repo'
 import { CatalogRepo } from './catalog-repo'
 import type { GeoIp } from './geoip'
 import type { KeyService } from './key-service'
+import type { ToolsRepo } from './tools-repo'
 
 export interface ConnectOverrides {
   password?: string
@@ -27,14 +28,16 @@ export class VaultService {
   constructor(
     private readonly repo: VaultRepo,
     private readonly secrets: SecretStore,
-    opts: { catalog?: CatalogRepo; keys?: KeyService; geo?: GeoIp | null } = {}
+    opts: { catalog?: CatalogRepo; keys?: KeyService; geo?: GeoIp | null; tools?: ToolsRepo } = {}
   ) {
     this.catalog = opts.catalog ?? null
+    this.tools = opts.tools ?? null
     this.keys = opts.keys ?? null
     this.geo = opts.geo ?? null
   }
 
   private readonly keys: KeyService | null
+  private readonly tools: ToolsRepo | null
   private readonly geo: GeoIp | null
 
   snapshot(): VaultSnapshot {
@@ -48,6 +51,9 @@ export class VaultService {
       keys: this.catalog?.listKeys() ?? [],
       identities: this.catalog?.listIdentities() ?? [],
       integrations: this.catalog?.listIntegrations() ?? [],
+      snippets: this.tools?.listSnippets() ?? [],
+      forwards: this.tools?.listForwards() ?? [],
+      knownHosts: this.tools?.listKnownHosts() ?? [],
       secretsPersistent: this.secrets.persistent
     }
   }
