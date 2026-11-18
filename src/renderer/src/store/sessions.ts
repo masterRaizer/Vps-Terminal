@@ -33,7 +33,7 @@ export interface Tab {
   rememberPassphrase?: boolean
 }
 
-export type Section = 'hosts' | 'keychain' | 'forwarding' | 'snippets' | 'knownhosts' | 'logs'
+export type Section = 'hosts' | 'keychain' | 'forwarding' | 'snippets' | 'knownhosts' | 'logs' | 'sync'
 export type View = 'vault' | 'sftp' | 'term'
 export type SideTab = 'quick' | 'snippets' | 'history' | 'themes'
 

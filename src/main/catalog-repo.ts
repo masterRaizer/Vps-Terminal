@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { Identity, Integration, KeyType, SshKey } from '@shared/vault'
-import type { Db } from './db'
+import { tombstone, type Db } from './db'
 
 interface KeyRow {
   id: string
@@ -98,26 +98,29 @@ export class CatalogRepo {
   insertKey(k: Omit<SshKey, 'id' | 'createdAt' | 'hasPassphrase'>, blob: Buffer): SshKey {
     const id = randomUUID()
     this.db
-      .prepare('INSERT INTO ssh_keys (id,label,type,bits,public_key,fingerprint,encrypted,has_passphrase,private_enc,created_at) VALUES (?,?,?,?,?,?,?,0,?,?)')
-      .run(id, k.label, k.type, k.bits, k.publicKey, k.fingerprint, k.encrypted ? 1 : 0, blob, this.now())
+      .prepare('INSERT INTO ssh_keys (id,label,type,bits,public_key,fingerprint,encrypted,has_passphrase,private_enc,created_at,updated_at) VALUES (?,?,?,?,?,?,?,0,?,?,?)')
+      .run(id, k.label, k.type, k.bits, k.publicKey, k.fingerprint, k.encrypted ? 1 : 0, blob, this.now(), this.now())
     return this.getKey(id)!
   }
   renameKey(id: string, label: string): void {
-    this.db.prepare('UPDATE ssh_keys SET label = ? WHERE id = ?').run(label, id)
+    this.db.prepare('UPDATE ssh_keys SET label = ?, updated_at = ? WHERE id = ?').run(label, this.now(), id)
   }
   /** After the first successful unlock we learn the public half of an encrypted key. */
   completeKey(id: string, info: { type: KeyType; bits: number | null; publicKey: string | null; fingerprint: string | null }): void {
     this.db
-      .prepare('UPDATE ssh_keys SET type = ?, bits = ?, public_key = ?, fingerprint = ? WHERE id = ? AND fingerprint IS NULL')
-      .run(info.type, info.bits, info.publicKey, info.fingerprint, id)
+      .prepare('UPDATE ssh_keys SET type = ?, bits = ?, public_key = ?, fingerprint = ?, updated_at = ? WHERE id = ? AND fingerprint IS NULL')
+      .run(info.type, info.bits, info.publicKey, info.fingerprint, this.now(), id)
   }
   setKeyHasPassphrase(id: string, has: boolean): void {
-    this.db.prepare('UPDATE ssh_keys SET has_passphrase = ? WHERE id = ?').run(has ? 1 : 0, id)
+    this.db.prepare('UPDATE ssh_keys SET has_passphrase = ?, updated_at = ? WHERE id = ?').run(has ? 1 : 0, this.now(), id)
   }
   deleteKey(id: string): void {
     this.db.transaction(() => {
-      this.db.prepare("UPDATE hosts SET key_id = NULL, auth = CASE WHEN auth = 'key' THEN 'password' ELSE auth END WHERE key_id = ?").run(id)
+      const t = this.now()
+      this.db.prepare("UPDATE hosts SET key_id = NULL, auth = CASE WHEN auth = 'key' THEN 'password' ELSE auth END, updated_at = ? WHERE key_id = ?").run(t, id)
+      this.db.prepare('UPDATE identities SET key_id = NULL, updated_at = ? WHERE key_id = ?').run(t, id)
       this.db.prepare('DELETE FROM ssh_keys WHERE id = ?').run(id)
+      tombstone(this.db, 'ssh_keys', id, t)
     })()
   }
 
@@ -141,10 +144,14 @@ export class CatalogRepo {
     return this.getIdentity(id)!
   }
   setIdentityHasPassword(id: string, has: boolean): void {
-    this.db.prepare('UPDATE identities SET has_password = ? WHERE id = ?').run(has ? 1 : 0, id)
+    this.db.prepare('UPDATE identities SET has_password = ?, updated_at = ? WHERE id = ?').run(has ? 1 : 0, this.now(), id)
   }
   deleteIdentity(id: string): void {
+    const t = this.now()
+    this.db.prepare('UPDATE hosts SET identity_id = NULL, updated_at = ? WHERE identity_id = ?').run(t, id)
+    this.db.prepare('UPDATE integrations SET identity_id = NULL, updated_at = ? WHERE identity_id = ?').run(t, id)
     this.db.prepare('DELETE FROM identities WHERE id = ?').run(id)
+    tombstone(this.db, 'identities', id, t)
   }
 
   // ---- integrations ----
@@ -159,29 +166,31 @@ export class CatalogRepo {
     if (i.identityId && !this.getIdentity(i.identityId)) throw new Error('Профиль доступа не найден')
     if (i.id && this.getIntegration(i.id)) {
       this.db
-        .prepare('UPDATE integrations SET name=?, url=?, auth_mode=?, login=?, identity_id=?, ssh_port=?, ssh_user=? WHERE id=?')
-        .run(i.name, i.url, i.authMode, i.login, i.identityId, i.sshPort, i.sshUser, i.id)
+        .prepare('UPDATE integrations SET name=?, url=?, auth_mode=?, login=?, identity_id=?, ssh_port=?, ssh_user=?, updated_at=? WHERE id=?')
+        .run(i.name, i.url, i.authMode, i.login, i.identityId, i.sshPort, i.sshUser, this.now(), i.id)
       return this.getIntegration(i.id)!
     }
     const id = i.id ?? randomUUID()
     this.db
-      .prepare("INSERT INTO integrations (id,kind,name,url,auth_mode,login,identity_id,ssh_port,ssh_user,created_at) VALUES (?,'remnawave',?,?,?,?,?,?,?,?)")
-      .run(id, i.name, i.url, i.authMode, i.login, i.identityId, i.sshPort, i.sshUser, this.now())
+      .prepare("INSERT INTO integrations (id,kind,name,url,auth_mode,login,identity_id,ssh_port,ssh_user,created_at,updated_at) VALUES (?,'remnawave',?,?,?,?,?,?,?,?,?)")
+      .run(id, i.name, i.url, i.authMode, i.login, i.identityId, i.sshPort, i.sshUser, this.now(), this.now())
     return this.getIntegration(id)!
   }
   setIntegrationGroup(id: string, groupId: string): void {
-    this.db.prepare('UPDATE integrations SET group_id = ? WHERE id = ?').run(groupId, id)
+    this.db.prepare('UPDATE integrations SET group_id = ?, updated_at = ? WHERE id = ?').run(groupId, this.now(), id)
   }
   setIntegrationResult(id: string, error: string | null): void {
     this.db.prepare('UPDATE integrations SET last_sync_at = ?, last_error = ? WHERE id = ?').run(this.now(), error, id)
   }
   setIntegrationHasSecret(id: string, has: boolean): void {
-    this.db.prepare('UPDATE integrations SET has_secret = ? WHERE id = ?').run(has ? 1 : 0, id)
+    this.db.prepare('UPDATE integrations SET has_secret = ?, updated_at = ? WHERE id = ?').run(has ? 1 : 0, this.now(), id)
   }
   deleteIntegration(id: string): void {
     this.db.transaction(() => {
-      this.db.prepare('UPDATE hosts SET source = NULL, external_id = NULL WHERE source = ?').run(id)
+      const t = this.now()
+      this.db.prepare('UPDATE hosts SET source = NULL, external_id = NULL, updated_at = ? WHERE source = ?').run(t, id)
       this.db.prepare('DELETE FROM integrations WHERE id = ?').run(id)
+      tombstone(this.db, 'integrations', id, t)
     })()
   }
 }

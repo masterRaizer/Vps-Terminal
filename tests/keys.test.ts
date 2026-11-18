@@ -2,7 +2,7 @@ import { mkdtempSync, writeFileSync, mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { utils } from 'ssh2'
+import { genKeyPair } from './helpers/keys'
 import { DEFAULT_HOST_OPTIONS } from '../src/shared/vault'
 import { openDb } from '../src/main/db'
 import { MemorySecretStore } from '../src/main/secrets'
@@ -31,7 +31,7 @@ beforeEach(() => {
 
 describe('KeyService', () => {
   it('imports a plain ed25519 key, encrypts it at rest, dedupes by fingerprint', async () => {
-    const pair = utils.generateKeyPairSync('ed25519', { comment: 'me@pc' })
+    const pair = genKeyPair({ comment: 'me@pc' })
     const k = await keys.addKey('id_ed25519', pair.private)
     expect(k).toMatchObject({ type: 'ed25519', encrypted: false })
     expect(k!.fingerprint).toMatch(/^SHA256:/)
@@ -43,7 +43,7 @@ describe('KeyService', () => {
   })
 
   it('handles a passphrase-protected key: needs, rejects wrong, remembers right', async () => {
-    const pair = utils.generateKeyPairSync('ed25519', { passphrase: 's3cret', cipher: 'aes256-ctr', rounds: 16 })
+    const pair = genKeyPair({ passphrase: 's3cret', cipher: 'aes256-ctr', rounds: 16 })
     const k = (await keys.addKey('locked', pair.private))!
     expect(k).toMatchObject({ encrypted: true, fingerprint: null })
     await expect(keys.unlock(k.id)).rejects.toThrow(/\[\[NEED_PASSPHRASE:/)
@@ -64,14 +64,14 @@ describe('KeyService', () => {
 
   it('imports a folder and binds hosts by key file name', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'vts-keys-'))
-    const a = utils.generateKeyPairSync('ed25519')
+    const a = genKeyPair()
     writeFileSync(join(dir, 'id_ed25519'), a.private)
     writeFileSync(join(dir, 'id_ed25519.pub'), a.public)
     writeFileSync(join(dir, 'known_hosts'), 'junk')
     writeFileSync(join(dir, 'notes.txt'), 'hello')
     writeFileSync(join(dir, 'garbage'), 'not a key')
     mkdirSync(join(dir, 'work'))
-    writeFileSync(join(dir, 'work', 'deploy.pem'), utils.generateKeyPairSync('ed25519').private)
+    writeFileSync(join(dir, 'work', 'deploy.pem'), genKeyPair().private)
     const h = await vault.saveHost(host({ keyHint: 'id_ed25519' }), undefined)
     const r = await keys.importFolder(dir)
     expect(r.added.map((k) => k.label).sort()).toEqual(['deploy', 'id_ed25519'])
@@ -83,7 +83,7 @@ describe('KeyService', () => {
   })
 
   it('identities supply user, password and key', async () => {
-    const k = (await keys.addKey('ops', utils.generateKeyPairSync('ed25519').private))!
+    const k = (await keys.addKey('ops', genKeyPair().private))!
     const ident = await keys.saveIdentity({ label: 'ops', username: 'deploy', keyId: k.id }, 'pw')
     const h = await vault.saveHost(host({ auth: 'password', identityId: ident.id }), undefined)
     const c = await vault.resolveForConnect(h.id)
@@ -99,7 +99,7 @@ describe('KeyService', () => {
   })
 
   it('deleting a key detaches hosts', async () => {
-    const k = (await keys.addKey('k', utils.generateKeyPairSync('ed25519').private))!
+    const k = (await keys.addKey('k', genKeyPair().private))!
     const h = await vault.saveHost(host({ keyId: k.id }), undefined)
     await keys.deleteKey(k.id)
     expect(repo.getHost(h.id)).toMatchObject({ keyId: null, auth: 'password' })

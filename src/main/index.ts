@@ -20,6 +20,8 @@ import { localHome, localList, localMkdir, localPath, localRename, localRoots } 
 import { parseKnownHosts, ToolsRepo } from './tools-repo'
 import { ForwardManager } from './forward-manager'
 import { fingerprintOf } from './ssh-keys'
+import { SyncLocalStore } from './sync/local-store'
+import { SyncService } from './sync/service'
 
 const APP_NAME = 'Vps Terminal SSH'
 let mainWindow: BrowserWindow | null = null
@@ -28,6 +30,27 @@ let keys: KeyService
 let catalog: CatalogRepo
 let remnawave: RemnawaveSync
 let tools: ToolsRepo
+let sync: SyncService | null = null
+
+/** IPC channels that change synced data: each triggers a debounced sync. */
+const MUTATING = new Set<string>([
+  IPC.vaultSaveHost, IPC.vaultDeleteHost, IPC.vaultSaveGroup, IPC.vaultDeleteGroup, IPC.vaultImportHosts,
+  IPC.keysImportFiles, IPC.keysImportFolder, IPC.keysImportText, IPC.keysGenerate, IPC.keysRename, IPC.keysDelete, IPC.keysForgetPassphrase,
+  IPC.identitySave, IPC.identityDelete, IPC.integrationSave, IPC.integrationDelete, IPC.integrationSync,
+  IPC.snippetSave, IPC.snippetDelete, IPC.knownForget, IPC.knownImport, IPC.forwardSave, IPC.forwardDelete
+])
+const rawHandle = ipcMain.handle.bind(ipcMain)
+ipcMain.handle = ((channel: string, fn: Parameters<typeof ipcMain.handle>[1]) =>
+  rawHandle(
+    channel,
+    MUTATING.has(channel)
+      ? async (...args: Parameters<typeof fn>) => {
+          const r = await fn(...args)
+          sync?.schedule()
+          return r
+        }
+      : fn
+  )) as typeof ipcMain.handle
 
 const str = (v: unknown, name: string, max = 512): string => {
   if (typeof v !== 'string' || v.length > max) throw new Error(`Неверное поле: ${name}`)
@@ -43,7 +66,10 @@ const askHostKey = (info: Omit<HostKeyPrompt, 'requestId' | 'kind' | 'previous'>
     if (!mainWindow) return resolve(false)
     const requestId = crypto.randomUUID()
     pendingHostKeys.set(requestId, (ok) => {
-      if (ok) tools.trustHostKey(info.host, info.port, info.algorithm, info.fingerprint)
+      if (ok) {
+        tools.trustHostKey(info.host, info.port, info.algorithm, info.fingerprint)
+        sync?.schedule()
+      }
       resolve(ok)
     })
     const prompt: HostKeyPrompt = {
@@ -102,6 +128,9 @@ function createWindow(): void {
 
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show()
+    // Pull on start, then every 5 minutes (pushes happen right after local edits).
+    void sync?.syncNow().catch((e) => console.warn('Синхронизация:', (e as Error).message))
+    setInterval(() => void sync?.syncNow().catch(() => undefined), 5 * 60 * 1000)
     for (const r of tools.listForwards()) if (r.autoStart) void startForward(r.id).catch((e) => console.warn(`Автозапуск туннеля ${r.id}:`, (e as Error).message))
   })
 
@@ -246,6 +275,13 @@ function registerIpc(): void {
   ipcMain.handle(IPC.forwardStop, (_e, id: unknown) => forwards.stop(str(id, 'id', 64)))
   ipcMain.handle(IPC.forwardStatuses, () => forwards.statuses())
 
+  ipcMain.handle(IPC.syncStatus, () => sync!.status())
+  ipcMain.handle(IPC.syncConfigure, (_e, url: unknown, token: unknown, master: unknown) =>
+    sync!.configure(str(url, 'адрес', 512), str(token, 'токен', 512), str(master, 'мастер-пароль', 1024))
+  )
+  ipcMain.handle(IPC.syncNow, () => sync!.syncNow())
+  ipcMain.handle(IPC.syncDisable, () => sync!.disable())
+
   ipcMain.handle(IPC.vaultSnapshot, () => vault.snapshot())
   ipcMain.handle(IPC.vaultSaveHost, (_e, host: unknown, password: unknown) => vault.saveHost(host, password))
   ipcMain.handle(IPC.vaultDeleteHost, (_e, id: unknown) => vault.deleteHost(id))
@@ -373,10 +409,18 @@ if (!app.requestSingleInstanceLock()) {
       ? join(process.resourcesPath, 'geoip')
       : [join(app.getAppPath(), 'resources', 'geoip'), join(__dirname, '..', '..', 'resources', 'geoip')].find((d) => existsSync(join(d, 'country-v4.bin'))) ?? ''
     const geo = new GeoIp(geoDir)
-    keys = new KeyService(catalog, repo, new DataKeyCipher(secrets), secrets)
+    const cipher = new DataKeyCipher(secrets)
+    keys = new KeyService(catalog, repo, cipher, secrets)
     tools = new ToolsRepo(db)
     vault = new VaultService(repo, secrets, { catalog, keys, geo, tools })
     remnawave = new RemnawaveSync(catalog, repo, secrets, geo)
+    sync = new SyncService(
+      db,
+      secrets,
+      new SyncLocalStore(db, secrets, cipher),
+      (st) => mainWindow?.webContents.send(IPC.syncState, st),
+      () => mainWindow?.webContents.send(IPC.vaultChanged)
+    )
     await vault.backfillCountries().catch((e) => console.warn('GeoIP backfill failed:', e))
     registerIpc()
     createWindow()

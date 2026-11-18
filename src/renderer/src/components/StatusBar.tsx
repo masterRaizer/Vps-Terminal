@@ -1,5 +1,6 @@
 import { useSessions } from '@/store/sessions'
 import { useVault } from '@/store/vault'
+import { useSync } from '@/store/sync'
 
 const STATUS_TEXT = { idle: 'Ожидание', connecting: 'Подключение…', ready: 'Подключено', closed: 'Отключено', error: 'Ошибка' } as const
 
@@ -23,8 +24,27 @@ export function StatusBar() {
         {tunnels > 0 && <span className="dot dot-ready" />}Туннели: {tunnels}
       </button>
       <span className="toolbar-spacer" />
-      <span className="sb-item">Локальное хранилище</span>
+      <SyncIndicator />
       <span className="sb-item">UTF-8</span>
     </footer>
+  )
+}
+
+function SyncIndicator() {
+  const st = useSync((s) => s.status)
+  const label = !st?.configured
+    ? 'Локальное хранилище'
+    : st.syncing
+      ? 'Синхронизация…'
+      : st.lastError
+        ? 'Ошибка синхронизации'
+        : st.lastSyncAt
+          ? `Синхронизировано ${new Date(st.lastSyncAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+          : 'Синхронизация включена'
+  return (
+    <button className="sb-item sb-btn" title={st?.lastError ?? st?.url ?? 'Настроить синхронизацию'} onClick={() => useSessions.getState().showVault('sync')}>
+      {st?.configured && <span className={`dot ${st.lastError ? 'dot-error' : st.syncing ? 'dot-connecting' : 'dot-ready'}`} />}
+      {label}
+    </button>
   )
 }

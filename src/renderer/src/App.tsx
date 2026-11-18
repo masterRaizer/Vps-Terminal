@@ -16,6 +16,8 @@ import { LogsPage } from './pages/SectionPages'
 import { ForwardingPage } from './pages/ForwardingPage'
 import { KnownHostsPage } from './pages/KnownHostsPage'
 import { SnippetsPage } from './pages/SnippetsPage'
+import { SyncPage } from './pages/SyncPage'
+import './store/sync'
 import { SnippetVarsDialog } from './components/SnippetVarsDialog'
 import { KeychainPage } from './pages/KeychainPage'
 import { SftpPage } from './pages/SftpPage'
@@ -26,7 +28,8 @@ const PAGES = {
   forwarding: ForwardingPage,
   snippets: SnippetsPage,
   knownhosts: KnownHostsPage,
-  logs: LogsPage
+  logs: LogsPage,
+  sync: SyncPage
 }
 
 export function App() {

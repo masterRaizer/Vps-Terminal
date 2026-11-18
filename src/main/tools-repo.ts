@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { isIP } from 'node:net'
 import type { ForwardRule, ForwardRuleInput, KnownHost, Snippet, SnippetInput, SnippetRun } from '@shared/vault'
-import type { Db } from './db'
+import { tombstone, type Db } from './db'
 
 const tagsOf = (json: string): string[] => {
   try {
@@ -111,6 +111,7 @@ export class ToolsRepo {
   }
   deleteSnippet(id: string): void {
     this.db.prepare('DELETE FROM snippets WHERE id = ?').run(id)
+    tombstone(this.db, 'snippets', id, this.now())
   }
   recordRun(snippetId: string | null, hostId: string | null, command: string): void {
     this.db.prepare('INSERT INTO snippet_runs (id,snippet_id,host_id,command,at) VALUES (?,?,?,?,?)').run(randomUUID(), snippetId, hostId, command.slice(0, 64 * 1024), this.now())
@@ -153,8 +154,12 @@ export class ToolsRepo {
       .run(host.toLowerCase(), port, algorithm, fingerprint, this.now(), this.now())
   }
   forgetHostKey(host: string, port: number, algorithm?: string): void {
-    if (algorithm) this.db.prepare('DELETE FROM known_hosts WHERE host = ? AND port = ? AND algorithm = ?').run(host.toLowerCase(), port, algorithm)
-    else this.db.prepare('DELETE FROM known_hosts WHERE host = ? AND port = ?').run(host.toLowerCase(), port)
+    const h = host.toLowerCase()
+    const gone = this.listKnownHosts().filter((k) => k.host === h && k.port === port && (!algorithm || k.algorithm === algorithm))
+    for (const k of gone) {
+      this.db.prepare('DELETE FROM known_hosts WHERE host = ? AND port = ? AND algorithm = ?').run(k.host, k.port, k.algorithm)
+      tombstone(this.db, 'known_hosts', `${k.host}|${k.port}|${k.algorithm}`, this.now())
+    }
   }
 
   // ---- forwards ----
@@ -172,15 +177,16 @@ export class ToolsRepo {
     if (clash) throw new Error(`Порт ${f.bindPort} уже занят правилом «${clash.label || clash.bindPort}»`)
     const vals = [f.label, f.hostId, f.kind, f.bindAddress, f.bindPort, f.destHost, f.destPort, f.autoStart ? 1 : 0]
     if (f.id && this.getForward(f.id)) {
-      this.db.prepare('UPDATE forwards SET label=?, host_id=?, kind=?, bind_address=?, bind_port=?, dest_host=?, dest_port=?, auto_start=? WHERE id=?').run(...vals, f.id)
+      this.db.prepare('UPDATE forwards SET label=?, host_id=?, kind=?, bind_address=?, bind_port=?, dest_host=?, dest_port=?, auto_start=?, updated_at=? WHERE id=?').run(...vals, this.now(), f.id)
       return this.getForward(f.id)!
     }
     const id = f.id ?? randomUUID()
-    this.db.prepare('INSERT INTO forwards (label,host_id,kind,bind_address,bind_port,dest_host,dest_port,auto_start,id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)').run(...vals, id, this.now())
+    this.db.prepare('INSERT INTO forwards (label,host_id,kind,bind_address,bind_port,dest_host,dest_port,auto_start,id,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)').run(...vals, id, this.now(), this.now())
     return this.getForward(id)!
   }
   deleteForward(id: string): void {
     this.db.prepare('DELETE FROM forwards WHERE id = ?').run(id)
+    tombstone(this.db, 'forwards', id, this.now())
   }
 }
 

@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron'
-import { IPC, type HostKeyPrompt, type SessionEvent, type VpsApi } from '@shared/ipc'
+import { IPC, type HostKeyPrompt, type SessionEvent, type SyncStatus, type VpsApi } from '@shared/ipc'
 import type { TransferEvent } from '@shared/files'
 import type { TunnelStatus } from '@shared/vault'
 
@@ -77,6 +77,14 @@ const api: VpsApi = {
   knownHosts: {
     forget: (host, port, alg) => ipcRenderer.invoke(IPC.knownForget, host, port, alg),
     import: () => ipcRenderer.invoke(IPC.knownImport)
+  },
+  sync: {
+    status: () => ipcRenderer.invoke(IPC.syncStatus),
+    configure: (url, token, master) => ipcRenderer.invoke(IPC.syncConfigure, url, token, master),
+    now: () => ipcRenderer.invoke(IPC.syncNow),
+    disable: () => ipcRenderer.invoke(IPC.syncDisable),
+    onStatus: (cb) => subscribe<[SyncStatus]>(IPC.syncState, cb),
+    onVaultChanged: (cb) => subscribe<[]>(IPC.vaultChanged, cb)
   },
   forwards: {
     save: (r) => ipcRenderer.invoke(IPC.forwardSave, r),

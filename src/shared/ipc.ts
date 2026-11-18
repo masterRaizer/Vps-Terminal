@@ -111,8 +111,23 @@ export const IPC = {
   forwardStart: 'forward:start',
   forwardStop: 'forward:stop',
   forwardStatuses: 'forward:statuses',
-  forwardStatus: 'forward:status'
+  forwardStatus: 'forward:status',
+  syncStatus: 'sync:status',
+  syncConfigure: 'sync:configure',
+  syncNow: 'sync:now',
+  syncDisable: 'sync:disable',
+  syncState: 'sync:state',
+  vaultChanged: 'vault:changed'
 } as const
+
+export interface SyncStatus {
+  configured: boolean
+  url: string | null
+  syncing: boolean
+  lastSyncAt: number | null
+  lastError: string | null
+  version: number
+}
 
 export interface AppInfo {
   name: string
@@ -197,6 +212,15 @@ export interface VpsApi {
     forget(host: string, port: number, algorithm?: string): Promise<void>
     /** Imports an OpenSSH known_hosts file chosen in a dialog; null when cancelled. */
     import(): Promise<{ added: number; skipped: number } | null>
+  }
+  sync: {
+    status(): Promise<SyncStatus>
+    configure(url: string, token: string, masterPassword: string): Promise<SyncStatus>
+    now(): Promise<void>
+    disable(): Promise<void>
+    onStatus(cb: (s: SyncStatus) => void): () => void
+    /** Fired when a sync changed local data (reload the vault). */
+    onVaultChanged(cb: () => void): () => void
   }
   forwards: {
     save(rule: ForwardRuleInput): Promise<ForwardRule>

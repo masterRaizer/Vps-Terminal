@@ -1,0 +1,39 @@
+# Vps Terminal SSH sync server.
+#   docker compose up -d --build                  → sync on 127.0.0.1:8787 (put your own nginx/Caddy in front)
+#   docker compose --profile caddy up -d --build  → plus Caddy with automatic Let's Encrypt on :80/:443
+services:
+  sync:
+    build: .
+    image: vps-terminal-sync:1
+    restart: unless-stopped
+    environment:
+      SYNC_TOKEN_SHA256: ${SYNC_TOKEN_SHA256:?run ./deploy.sh first}
+      MAX_BLOB_MB: ${MAX_BLOB_MB:-25}
+    volumes:
+      - ./data:/data
+    ports:
+      - "127.0.0.1:8787:8787"
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 256m
+
+  caddy:
+    profiles: [caddy]
+    image: caddy:2.8.4-alpine
+    restart: unless-stopped
+    depends_on: [sync]
+    environment:
+      SYNC_DOMAIN: ${SYNC_DOMAIN:?set SYNC_DOMAIN in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

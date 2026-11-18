@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { useSessions, type Section } from '@/store/sessions'
-import { IconBraces, IconClock, IconFingerprint, IconForward, IconHosts, IconKey } from './Icons'
+import { IconBraces, IconClock, IconFingerprint, IconForward, IconHosts, IconKey, IconRefresh } from './Icons'
 
 const ITEMS: Array<{ id: Section; label: string; icon: ReactNode }> = [
   { id: 'hosts', label: 'Хосты', icon: <IconHosts /> },
@@ -8,7 +8,8 @@ const ITEMS: Array<{ id: Section; label: string; icon: ReactNode }> = [
   { id: 'forwarding', label: 'Проброс портов', icon: <IconForward /> },
   { id: 'snippets', label: 'Сниппеты', icon: <IconBraces /> },
   { id: 'knownhosts', label: 'Известные хосты', icon: <IconFingerprint /> },
-  { id: 'logs', label: 'Журнал', icon: <IconClock /> }
+  { id: 'logs', label: 'Журнал', icon: <IconClock /> },
+  { id: 'sync', label: 'Синхронизация', icon: <IconRefresh /> }
 ]
 
 export function NavSidebar() {

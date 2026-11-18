@@ -112,8 +112,21 @@ const MIGRATIONS: string[] = [
      dest_port INTEGER NOT NULL DEFAULT 0,
      auto_start INTEGER NOT NULL DEFAULT 0,
      created_at INTEGER NOT NULL
-   );`
+   );`,
+  `ALTER TABLE ssh_keys ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0;
+   UPDATE ssh_keys SET updated_at = created_at;
+   ALTER TABLE forwards ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0;
+   UPDATE forwards SET updated_at = created_at;
+   ALTER TABLE integrations ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0;
+   UPDATE integrations SET updated_at = created_at;
+   CREATE TABLE tombstones (kind TEXT NOT NULL, id TEXT NOT NULL, deleted_at INTEGER NOT NULL, PRIMARY KEY (kind, id));
+   CREATE TABLE sync_state (key TEXT PRIMARY KEY, value TEXT NOT NULL);`
 ]
+
+/** Records a deletion so it can be synced to other devices. */
+export function tombstone(db: Db, kind: string, id: string, at = Date.now()): void {
+  db.prepare('INSERT INTO tombstones (kind,id,deleted_at) VALUES (?,?,?) ON CONFLICT(kind,id) DO UPDATE SET deleted_at = excluded.deleted_at').run(kind, id, at)
+}
 
 export function openDb(file: string): Db {
   const db = new Database(file)

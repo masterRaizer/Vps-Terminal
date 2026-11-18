@@ -699,3 +699,10 @@ textarea.notes::placeholder { color: var(--faint); }
 .card-grid.one-col { grid-template-columns: 1fr; }
 .sb-btn { border: 0; background: none; cursor: pointer; color: inherit; font: inherit; }
 .sb-btn:hover { color: var(--text); }
+
+/* ---------- Sync ---------- */
+.page-body.narrow { max-width: 720px; }
+.sync-card { display: flex; flex-direction: column; gap: 14px; margin-top: 18px; padding: 24px; border-radius: 16px; background: var(--toolbar); }
+.sync-head { display: flex; gap: 16px; align-items: flex-start; }
+.sync-head h2 { margin: 2px 0 6px; font-size: 17px; }
+.sync-head p { margin: 0; color: var(--muted); line-height: 1.5; }

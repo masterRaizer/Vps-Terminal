@@ -93,7 +93,11 @@ export function looksLikePrivateKey(text: string): boolean {
 
 export function generateKey(type: 'ed25519' | 'rsa', opts: { bits?: number; comment?: string; passphrase?: string }): { private: string; public: string } {
   const base = { comment: opts.comment, ...(opts.passphrase ? { passphrase: opts.passphrase, cipher: 'aes256-ctr', rounds: 16 } : {}) }
-  return type === 'rsa'
-    ? utils.generateKeyPairSync('rsa', { bits: opts.bits ?? 4096, ...base })
-    : utils.generateKeyPairSync('ed25519', base)
+  // ssh2's generator occasionally (~1 in 120 for ed25519) emits a key its own parser rejects.
+  // Never hand such a key to the user: verify and regenerate.
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const pair = type === 'rsa' ? utils.generateKeyPairSync('rsa', { bits: opts.bits ?? 4096, ...base }) : utils.generateKeyPairSync('ed25519', base)
+    if (!(utils.parseKey(pair.private, opts.passphrase) instanceof Error)) return pair
+  }
+  throw new Error('Не удалось сгенерировать корректный ключ, попробуйте ещё раз')
 }

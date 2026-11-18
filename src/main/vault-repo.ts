@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { DEFAULT_HOST_OPTIONS, type AuthMethod, type CountrySource, type Group, type GroupInput, type Host, type HostInput, type HostOptions } from '@shared/vault'
-import type { Db } from './db'
+import { tombstone, type Db } from './db'
 
 interface HostRow {
   id: string
@@ -247,12 +247,12 @@ export class VaultRepo {
   }
 
   setCountry(id: string, country: string | null, source: CountrySource): void {
-    this.db.prepare('UPDATE hosts SET country = ?, country_source = ? WHERE id = ?').run(country, source, id)
+    this.db.prepare('UPDATE hosts SET country = ?, country_source = ?, updated_at = ? WHERE id = ?').run(country, source, this.now(), id)
   }
 
   /** Marks a host as managed by an integration. */
   setSource(id: string, source: string | null, externalId: string | null): void {
-    this.db.prepare('UPDATE hosts SET source = ?, external_id = ? WHERE id = ?').run(source, externalId, id)
+    this.db.prepare('UPDATE hosts SET source = ?, external_id = ?, updated_at = ? WHERE id = ?').run(source, externalId, this.now(), id)
   }
 
   hostsBySource(source: string): Host[] {
@@ -262,12 +262,12 @@ export class VaultRepo {
   /** Binds hosts waiting for a key with this file name; returns how many were bound. */
   bindKeyHint(hint: string, keyId: string): number {
     return this.db
-      .prepare("UPDATE hosts SET key_id = ?, auth = 'key' WHERE key_id IS NULL AND lower(key_hint) = lower(?)")
-      .run(keyId, hint).changes
+      .prepare("UPDATE hosts SET key_id = ?, auth = 'key', updated_at = ? WHERE key_id IS NULL AND lower(key_hint) = lower(?)")
+      .run(keyId, this.now(), hint).changes
   }
 
   setHasPassword(id: string, has: boolean): void {
-    this.db.prepare('UPDATE hosts SET has_password = ? WHERE id = ?').run(has ? 1 : 0, id)
+    this.db.prepare('UPDATE hosts SET has_password = ?, updated_at = ? WHERE id = ?').run(has ? 1 : 0, this.now(), id)
   }
 
   touchConnected(id: string): void {
@@ -275,7 +275,11 @@ export class VaultRepo {
   }
 
   deleteHost(id: string): void {
+    const t = this.now()
+    // Forwards cascade with the host; record them too so other devices drop them.
+    for (const f of this.db.prepare('SELECT id FROM forwards WHERE host_id = ?').all(id) as Array<{ id: string }>) tombstone(this.db, 'forwards', f.id, t)
     this.db.prepare('DELETE FROM hosts WHERE id = ?').run(id)
+    tombstone(this.db, 'hosts', id, t)
   }
 
   saveGroup(input: GroupInput): Group {
@@ -302,9 +306,11 @@ export class VaultRepo {
     const g = this.getGroup(id)
     if (!g) return
     this.db.transaction(() => {
-      this.db.prepare('UPDATE hosts SET group_id = ? WHERE group_id = ?').run(g.parentId, id)
-      this.db.prepare('UPDATE groups SET parent_id = ? WHERE parent_id = ?').run(g.parentId, id)
+      const t = this.now()
+      this.db.prepare('UPDATE hosts SET group_id = ?, updated_at = ? WHERE group_id = ?').run(g.parentId, t, id)
+      this.db.prepare('UPDATE groups SET parent_id = ?, updated_at = ? WHERE parent_id = ?').run(g.parentId, t, id)
       this.db.prepare('DELETE FROM groups WHERE id = ?').run(id)
+      tombstone(this.db, 'groups', id, t)
     })()
   }
 
