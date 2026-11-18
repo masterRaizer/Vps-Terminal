@@ -6,6 +6,7 @@ import { Client, type FileEntryWithStats, type SFTPWrapper } from 'ssh2'
 import type { FileEntry, Listing, TransferEvent } from '@shared/files'
 import { keyAlgorithm, sha256Fingerprint } from './fingerprint'
 import { defaultAgent, type HostKeyInfo } from './ssh-manager'
+import { humanizeSshError } from './ssh-errors'
 
 export interface SftpConnectRequest {
   host: string
@@ -69,7 +70,7 @@ export class SftpManager {
           })
         })
       })
-      client.on('error', (e) => fail(e))
+      client.on('error', (e) => fail(new Error(humanizeSshError(e, `${req.host}:${req.port}`))))
       client.on('close', () => {
         if (this.sessions.delete(id)) this.onClosed(id)
         if (!settled) fail(new Error('Соединение закрыто'))

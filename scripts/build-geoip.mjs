@@ -1,4 +1,5 @@
-// Builds compact country lookup tables from the CC0 ip-location-db dataset.
+// Builds compact country lookup tables from the DB-IP IP-to-Country Lite dataset (CC BY 4.0, https://db-ip.com),
+// packaged by ip-location-db. DB-IP is geolocation (where the address is used), not whois registration.
 // Output: resources/geoip/country-v4.bin, country-v6.bin
 //   magic(4) | count u32 LE | starts (u32 LE for v4, u64 LE /64-prefix for v6) | codes (2 ASCII bytes each)
 // A code of "--" marks a gap with no country.
@@ -11,9 +12,9 @@ import { fileURLToPath } from 'node:url'
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const outDir = join(root, 'resources', 'geoip')
 const require = createRequire(import.meta.url)
-const pkgDir = dirname(require.resolve('@ip-location-db/geo-whois-asn-country/package.json'))
-const src4 = join(pkgDir, 'geo-whois-asn-country-ipv4-num.csv')
-const src6 = join(pkgDir, 'geo-whois-asn-country-ipv6-num.csv')
+const pkgDir = dirname(require.resolve('@ip-location-db/dbip-country/package.json'))
+const src4 = join(pkgDir, 'dbip-country-ipv4-num.csv')
+const src6 = join(pkgDir, 'dbip-country-ipv6-num.csv')
 const out4 = join(outDir, 'country-v4.bin')
 const out6 = join(outDir, 'country-v6.bin')
 

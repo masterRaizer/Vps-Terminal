@@ -23,3 +23,33 @@ describe('GeoIp', () => {
     expect(await geo.countryOf('localhost')).toBeNull()
   })
 })
+
+import { countryFromLabel } from '../src/shared/countryHint'
+
+describe('countryFromLabel', () => {
+  it.each([
+    ['VPS AE (UAE)', 'AE'],
+    ['VPS NL (Amsterdam) [sync]', 'NL'],
+    ['VPS SE (Stockholm)', 'SE'],
+    ['VPS RU (St Petersburg)', 'RU'],
+    ['нидерланды pl2go килмикс', 'NL'],
+    ['германия дезган', 'DE'],
+    ['Швеция киллмикс', 'SE'],
+    ['finka', 'FI'],
+    ['4 сдн финка', 'FI'],
+    ['[IT] milan-01', 'IT'],
+    ['IT backup box', null],
+    ['router', null],
+    ['prod-web-01', null],
+    ['OK node', null]
+  ])('%s → %s', (label, cc) => {
+    expect(countryFromLabel(label)).toBe(cc)
+  })
+})
+
+describe('DB-IP tables', () => {
+  it('locates the user-reported hosts by geolocation, not registration', () => {
+    expect(geo.countryOfIp('64.130.62.137')).toBe('NL')
+    expect(geo.countryOfIp('45.8.93.181')).toBe('SE')
+  })
+})

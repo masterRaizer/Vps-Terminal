@@ -376,6 +376,9 @@ function registerIpc(): void {
 }
 
 app.setAppUserModelId('com.vpsterminal.ssh')
+// Full accessibility tree for screen readers and UI automation (Windows UIA): `--a11y` or VTS_A11Y=1.
+// Off by default because Chromium builds the tree lazily for speed.
+if (process.argv.includes('--a11y') || process.env['VTS_A11Y'] === '1') app.commandLine.appendSwitch('force-renderer-accessibility')
 
 /** GeoIP tables: extra resources when packaged, the repo's resources/ when run from source. */
 function geoipDir(): string {

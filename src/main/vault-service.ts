@@ -3,6 +3,10 @@ import { hostPasswordAccount, MemorySecretStore, type SecretStore } from './secr
 import { validateGroupInput, validateHostInput, VaultRepo } from './vault-repo'
 import { CatalogRepo } from './catalog-repo'
 import type { GeoIp } from './geoip'
+import { countryFromLabel } from '@shared/countryHint'
+
+/** Bump when the country logic or tables change: automatic countries are then recomputed once. */
+const COUNTRY_LOGIC = 'dbip-2026-06+label-1'
 import type { KeyService } from './key-service'
 import type { ToolsRepo } from './tools-repo'
 
@@ -67,21 +71,34 @@ export class VaultService {
     if (input.country && input.countrySource === undefined && input.country !== prev?.country) input.countrySource = 'manual'
     const host = this.repo.saveHost(input)
     await this.applyPassword(host.id, password as PasswordChange)
-    if (host.countrySource === 'auto' && (!host.country || prev?.address !== host.address)) await this.fillCountry(host)
+    const automatic = host.countrySource === 'auto' || host.countrySource === 'label'
+    if (automatic && (!host.country || prev?.address !== host.address || prev?.label !== host.label)) await this.fillCountry(host)
     return this.repo.getHost(host.id)!
   }
 
   /** GeoIP lookup for hosts whose country is still unknown (runs at startup and after imports). */
   async backfillCountries(): Promise<number> {
+    // After a change in tables or rules, recompute every automatic country once.
+    const redo = this.repo.getMeta('country-logic') !== COUNTRY_LOGIC
     let n = 0
-    for (const h of this.repo.listHosts()) if (h.countrySource === 'auto' && !h.country && (await this.fillCountry(h))) n++
+    for (const h of this.repo.listHosts()) {
+      const automatic = h.countrySource === 'auto' || h.countrySource === 'label'
+      if (automatic && (redo || !h.country) && (await this.fillCountry(h))) n++
+    }
+    this.repo.setMeta('country-logic', COUNTRY_LOGIC)
     return n
   }
 
+  /** Name hint first (people know where their servers are), then IP geolocation. */
   private async fillCountry(h: Host): Promise<boolean> {
+    const fromLabel = countryFromLabel(h.label)
+    if (fromLabel) {
+      if (h.country !== fromLabel || h.countrySource !== 'label') this.repo.setCountry(h.id, fromLabel, 'label')
+      return true
+    }
     if (!this.geo) return false
     const cc = await this.geo.countryOf(h.address).catch(() => null)
-    this.repo.setCountry(h.id, cc, 'auto')
+    if (cc !== h.country || h.countrySource !== 'auto') this.repo.setCountry(h.id, cc, 'auto')
     return Boolean(cc)
   }
 

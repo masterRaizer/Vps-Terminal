@@ -3,6 +3,7 @@ import { Client, type ClientChannel } from 'ssh2'
 import type { ForwardRule, TunnelStatus } from '@shared/vault'
 import { keyAlgorithm, sha256Fingerprint } from './fingerprint'
 import { defaultAgent, type HostKeyInfo } from './ssh-manager'
+import { humanizeSshError } from './ssh-errors'
 
 export interface TunnelCredentials {
   host: string
@@ -55,6 +56,7 @@ export class ForwardManager {
     return new Promise((resolve, reject) => {
       let settled = false
       const fail = (e: Error): void => {
+        if (t.status.state === 'error') return
         this.set(t, { state: 'error', message: e.message })
         this.teardown(t)
         if (!settled) {
@@ -77,7 +79,7 @@ export class ForwardManager {
           fail(e as Error)
         }
       })
-      client.on('error', (e) => fail(e))
+      client.on('error', (e) => fail(new Error(humanizeSshError(e, `${cred.host}:${cred.port}`))))
       client.on('close', () => {
         if (this.tunnels.get(rule.id) === t && t.status.state !== 'stopped') fail(new Error('SSH-соединение туннеля закрыто'))
       })

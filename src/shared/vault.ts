@@ -62,7 +62,8 @@ export interface Host {
   lastConnectedAt: number | null
 }
 
-export type CountrySource = 'auto' | 'manual' | 'panel'
+/** auto = IP geolocation, label = recognised in the host name, manual = picked by hand, panel = Remnawave node. */
+export type CountrySource = 'auto' | 'label' | 'manual' | 'panel'
 
 export type HostInput = Omit<
   Host,

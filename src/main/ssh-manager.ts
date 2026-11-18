@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { Client, type ClientChannel } from 'ssh2'
 import type { ConnectRequest, SessionEvent } from '@shared/ipc'
 import { keyAlgorithm, sha256Fingerprint } from './fingerprint'
+import { humanizeSshError } from './ssh-errors'
 
 export interface HostKeyInfo {
   sessionId: string
@@ -36,7 +37,10 @@ interface Session {
 export class SshManager {
   private sessions = new Map<string, Session>()
 
-  constructor(private readonly events: SshManagerEvents) {}
+  constructor(
+    private readonly events: SshManagerEvents,
+    private readonly readyTimeout = 20000
+  ) {}
 
   /** `privateKey`/`passphrase` are main-only: they never come from the renderer. */
   connect(req: ConnectRequest & { privateKey?: string; passphrase?: string }): string {
@@ -45,8 +49,13 @@ export class SshManager {
     const session: Session = { client, decoder: new TextDecoder('utf-8') }
     this.sessions.set(sessionId, session)
 
-    const emit = (status: SessionEvent['status'], message?: string): void =>
+    // ssh2 often reports one failure several times (error, another error, close): show the first only.
+    let failed = false
+    const emit = (status: SessionEvent['status'], message?: string): void => {
+      if (failed) return
+      if (status === 'error') failed = true
       this.events.onStatus({ sessionId, status, message })
+    }
 
     client.on('ready', () => {
       client.shell(
@@ -54,7 +63,7 @@ export class SshManager {
         { env: req.env ?? {} },
         (err, stream) => {
           if (err) {
-            emit('error', err.message)
+            emit('error', humanizeSshError(err))
             client.end()
             return
           }
@@ -70,7 +79,7 @@ export class SshManager {
         }
       )
     })
-    client.on('error', (err) => emit('error', err.message))
+    client.on('error', (err) => emit('error', humanizeSshError(err, `${req.host}:${req.port}`)))
     client.on('close', () => {
       if (this.sessions.delete(sessionId)) emit('closed')
     })
@@ -87,7 +96,7 @@ export class SshManager {
         agent: req.agent || req.agentForward ? defaultAgent() : undefined,
         agentForward: Boolean(req.agentForward && defaultAgent()),
         tryKeyboard: Boolean(req.password),
-        readyTimeout: 20000,
+        readyTimeout: this.readyTimeout,
         keepaliveInterval: 15000,
         hostVerifier: (key: Buffer, verify: (ok: boolean) => void) => {
           this.events
@@ -109,7 +118,7 @@ export class SshManager {
         })
       }
     } catch (e) {
-      emit('error', (e as Error).message)
+      emit('error', humanizeSshError(e))
       this.sessions.delete(sessionId)
     }
     return sessionId

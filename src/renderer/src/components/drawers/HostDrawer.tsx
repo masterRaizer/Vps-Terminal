@@ -234,13 +234,26 @@ export function HostDrawer({ hostId, groupId }: { hostId?: string; groupId?: str
               (form.countrySource === 'manual' ? form.country : existing?.country) ? (
                 <span>{countryName((form.countrySource === 'manual' ? form.country : existing?.country)!)}</span>
               ) : (
-                <span className="ph">Страна — определится по IP</span>
+                <span className="ph">Страна — из названия или по IP</span>
               )
             }
-            right={<span className="picker-right">{form.countrySource === 'manual' ? 'вручную' : existing?.countrySource === 'panel' ? 'из панели' : 'по IP'}</span>}
-            options={[{ value: '', label: 'Определять по IP автоматически' }, ...countries.map((c) => ({ value: c.code, label: c.name, icon: <Flag cc={c.code} size={18} /> }))]}
+            right={
+              <span className="picker-right">
+                {form.countrySource === 'manual' ? 'вручную' : existing?.countrySource === 'panel' ? 'из панели' : existing?.countrySource === 'label' ? 'из названия' : 'по IP'}
+              </span>
+            }
+            options={[{ value: '', label: 'Автоматически: из названия, иначе по IP (DB-IP)' }, ...countries.map((c) => ({ value: c.code, label: c.name, icon: <Flag cc={c.code} size={18} /> }))]}
             onPick={(v) => setForm((f) => (v ? { ...f, country: v, countrySource: 'manual' } : { ...f, country: null, countrySource: 'auto' }))}
           />
+          {form.countrySource !== 'manual' && existing?.countrySource === 'auto' && existing.country && (
+            <p className="hint attribution">
+              Страна по IP:{' '}
+              <a href="https://db-ip.com" target="_blank" rel="noreferrer">
+                IP Geolocation by DB-IP
+              </a>
+              . Если неверно — допишите код страны в название (например, «VPS NL») или выберите вручную.
+            </p>
+          )}
           <label className="iinput tags-input">
             <span className="iinput-icon">
               <IconTag size={18} />

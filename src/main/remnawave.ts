@@ -1,6 +1,7 @@
 import { DEFAULT_HOST_OPTIONS, type Integration, type IntegrationInput, type SyncResult } from '@shared/vault'
 import type { CatalogRepo } from './catalog-repo'
 import type { GeoIp } from './geoip'
+import { countryFromLabel } from '@shared/countryHint'
 import type { SecretStore } from './secrets'
 import type { VaultRepo } from './vault-repo'
 
@@ -162,8 +163,9 @@ export class RemnawaveSync {
 
     for (const n of nodes) {
       const panelCountry = /^[A-Z]{2}$/.test(n.countryCode) && n.countryCode !== 'XX' ? n.countryCode : null
-      const country = panelCountry ?? (await this.geo?.countryOf(n.address).catch(() => null)) ?? null
-      const countrySource = panelCountry ? ('panel' as const) : ('auto' as const)
+      const fromName = panelCountry ? null : countryFromLabel(n.name)
+      const country = panelCountry ?? fromName ?? (await this.geo?.countryOf(n.address).catch(() => null)) ?? null
+      const countrySource = panelCountry ? ('panel' as const) : fromName ? ('label' as const) : ('auto' as const)
       const panelTags = [PANEL_TAG, ...n.tags.map((t) => t.toLowerCase())]
       const h = existing.get(n.uuid)
       if (!h) {

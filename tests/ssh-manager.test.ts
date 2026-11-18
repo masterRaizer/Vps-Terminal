@@ -89,15 +89,18 @@ describe('SshManager', () => {
   it('aborts when the host key is rejected', async () => {
     const h = harness(false)
     h.mgr.connect({ host: '127.0.0.1', port, username: 'tester', password: 's3cret', cols: 80, rows: 24 })
-    await h.waitFor(() => h.statuses.some((s) => s.status === 'closed'))
+    await h.waitFor(() => h.statuses.some((s) => s.status === 'error' || s.status === 'closed'))
+    await new Promise((r) => setTimeout(r, 200))
     expect(h.statuses.some((s) => s.status === 'ready')).toBe(false)
+    expect(h.statuses.filter((s) => s.status === 'error')).toHaveLength(1)
+    expect(h.statuses.find((s) => s.status === 'error')?.message).toMatch(/ключ сервера.*не подтверждён/)
   })
 
   it('reports an auth failure', async () => {
     const h = harness(true)
     h.mgr.connect({ host: '127.0.0.1', port, username: 'tester', password: 'wrong', cols: 80, rows: 24 })
     await h.waitFor(() => h.statuses.some((s) => s.status === 'error'))
-    expect(h.statuses.find((s) => s.status === 'error')?.message).toMatch(/authentication/i)
+    expect(h.statuses.find((s) => s.status === 'error')?.message).toMatch(/не принял ни ключ, ни пароль/)
   })
 })
 
@@ -115,5 +118,25 @@ describe('validateConnectRequest', () => {
     [null]
   ])('rejects %j', (bad) => {
     expect(() => validateConnectRequest(bad)).toThrow()
+  })
+})
+
+describe('silent server (TCP open, no SSH banner)', () => {
+  it('reports one clear error and no extra "closed"', async () => {
+    const { createServer } = await import('node:net')
+    const sockets: import('node:net').Socket[] = []
+    const mute = createServer((s) => sockets.push(s))
+    await new Promise<void>((r) => mute.listen(0, '127.0.0.1', r))
+    const statuses: SessionEvent[] = []
+    const mgr = new SshManager({ onData: () => {}, onStatus: (e) => statuses.push(e), verifyHostKey: async () => true }, 400)
+    mgr.connect({ host: '127.0.0.1', port: (mute.address() as AddressInfo).port, username: 'u', password: 'p', cols: 80, rows: 24 })
+    await new Promise((r) => setTimeout(r, 1500))
+    sockets.forEach((s) => s.destroy())
+    await new Promise((r) => setTimeout(r, 300))
+    mute.close()
+    const errors = statuses.filter((s) => s.status === 'error')
+    expect(errors).toHaveLength(1)
+    expect(errors[0].message).toMatch(/не ответил на SSH-рукопожатие/)
+    expect(statuses.some((s) => s.status === 'closed')).toBe(false)
   })
 })

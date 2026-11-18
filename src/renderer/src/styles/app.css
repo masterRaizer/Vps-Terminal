@@ -706,3 +706,4 @@ textarea.notes::placeholder { color: var(--faint); }
 .sync-head { display: flex; gap: 16px; align-items: flex-start; }
 .sync-head h2 { margin: 2px 0 6px; font-size: 17px; }
 .sync-head p { margin: 0; color: var(--muted); line-height: 1.5; }
+.hint.attribution a { color: #7dbbff; }

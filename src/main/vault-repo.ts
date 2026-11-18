@@ -166,10 +166,11 @@ export function validateHostInput(raw: unknown): HostInput {
     favorite: r.favorite === true,
     notes: str(r.notes, 'Заметки', 4000),
     options: validateOptions(r.options),
-    country: validCountry(r.country),
-    countrySource: r.countrySource === 'manual' || r.countrySource === 'panel' ? r.countrySource : 'auto',
-    identityId: optId(r.identityId, 'Профиль доступа'),
-    keyHint: r.keyHint ? str(r.keyHint, 'Подсказка ключа', 200) || null : null
+    // Fields the caller did not send keep their stored values (undefined), they are not reset.
+    country: r.country === undefined ? undefined : validCountry(r.country),
+    countrySource: r.countrySource === undefined ? undefined : r.countrySource === 'manual' || r.countrySource === 'panel' || r.countrySource === 'label' ? r.countrySource : 'auto',
+    identityId: r.identityId === undefined ? undefined : optId(r.identityId, 'Профиль доступа'),
+    keyHint: r.keyHint === undefined ? undefined : r.keyHint ? str(r.keyHint, 'Подсказка ключа', 200) || null : null
   }
 }
 
@@ -264,6 +265,14 @@ export class VaultRepo {
     return this.db
       .prepare("UPDATE hosts SET key_id = ?, auth = 'key', updated_at = ? WHERE key_id IS NULL AND lower(key_hint) = lower(?)")
       .run(keyId, this.now(), hint).changes
+  }
+
+  getMeta(key: string): string | null {
+    return (this.db.prepare('SELECT value FROM sync_state WHERE key = ?').get(`meta:${key}`) as { value: string } | undefined)?.value ?? null
+  }
+
+  setMeta(key: string, value: string): void {
+    this.db.prepare('INSERT INTO sync_state (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(`meta:${key}`, value)
   }
 
   setHasPassword(id: string, has: boolean): void {

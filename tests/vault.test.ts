@@ -127,3 +127,30 @@ describe('host options', () => {
     expect(d.options).toEqual({ backspace: 'del', agentForward: false, env: {}, termTheme: null, startupSnippetId: null })
   })
 })
+
+describe('country detection', () => {
+  it('prefers the host name, falls back to DB-IP, keeps manual picks', async () => {
+    const { GeoIp } = await import('../src/main/geoip')
+    const { join } = await import('node:path')
+    const geoSvc = new VaultService(new VaultRepo(openDb(':memory:')), new MemorySecretStore(), { geo: new GeoIp(join(__dirname, '..', 'resources', 'geoip')) })
+    const base = { ...baseHost, options: undefined }
+    const ae = await geoSvc.saveHost({ ...base, label: 'VPS AE (UAE)', address: '31.56.179.236' }, undefined)
+    expect(ae).toMatchObject({ country: 'AE', countrySource: 'label' })
+    const nl = await geoSvc.saveHost({ ...base, label: 'nlhome', address: '64.130.62.137' }, undefined)
+    expect(nl).toMatchObject({ country: 'NL', countrySource: 'auto' })
+    const renamed = await geoSvc.saveHost({ ...base, id: ae.id, label: 'edge-1', address: '31.56.179.236' }, undefined)
+    expect(renamed.countrySource).toBe('auto')
+    const manual = await geoSvc.saveHost({ ...base, id: nl.id, label: 'nlhome', address: '64.130.62.137', country: 'DE', countrySource: 'manual' }, undefined)
+    expect(manual).toMatchObject({ country: 'DE', countrySource: 'manual' })
+    const again = await geoSvc.saveHost({ ...base, id: nl.id, label: 'VPS SE renamed', address: '64.130.62.137' }, undefined)
+    expect(again).toMatchObject({ country: 'DE', countrySource: 'manual' })
+  })
+})
+
+describe('partial edits keep fields the editor does not send', () => {
+  it('keeps a manual country, identity and key hint on a plain edit', async () => {
+    const h = await svc.saveHost({ ...baseHost, keyHint: 'id_rsa', country: 'DE', countrySource: 'manual' }, undefined)
+    const edited = await svc.saveHost({ ...baseHost, id: h.id, label: 'renamed' }, undefined)
+    expect(edited).toMatchObject({ label: 'renamed', country: 'DE', countrySource: 'manual', keyHint: 'id_rsa' })
+  })
+})
