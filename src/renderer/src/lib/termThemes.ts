@@ -1,9 +1,12 @@
+import { EXTRA_THEMES } from './termThemesExtra'
 import type { ITheme } from '@xterm/xterm'
 
 export interface TermTheme {
   id: string
   name: string
   note: string
+  /** Light background (grouped separately in the picker). */
+  light?: boolean
   theme: ITheme
 }
 
@@ -21,7 +24,7 @@ const navyAnsi = ansi(
   ['#5a6178', '#ff8a92', '#5fe3a5', '#ffd77f', '#7dbdff', '#d9aefc', '#68e0e0', '#f5f7fb']
 )
 
-export const TERM_THEMES: TermTheme[] = [
+const OWN_THEMES: TermTheme[] = [
   {
     id: 'catppuccin-mocha',
     name: 'Catppuccin Mocha',
@@ -50,6 +53,7 @@ export const TERM_THEMES: TermTheme[] = [
     id: 'paper',
     name: 'Paper',
     note: 'светлая',
+    light: true,
     theme: {
       background: '#f6f5f0', foreground: '#2d3142', cursor: '#1f7a55', cursorAccent: '#f6f5f0', selectionBackground: '#1f7a5530',
       ...ansi(
@@ -107,6 +111,22 @@ export const TERM_THEMES: TermTheme[] = [
     }
   }
 ]
+
+const BASIC: TermTheme = {
+  id: 'basic',
+  name: 'Basic',
+  note: 'чёрный на белом',
+  light: true,
+  theme: {
+    background: '#ffffff', foreground: '#000000', cursor: '#7f7f7f', cursorAccent: '#ffffff', selectionBackground: '#a4c8ff99',
+    ...ansi(
+      ['#000000', '#990000', '#00a600', '#999900', '#0000b2', '#b200b2', '#00a6b2', '#bfbfbf'],
+      ['#666666', '#e50000', '#00d900', '#e5e500', '#0000ff', '#e500e5', '#00e5e5', '#e5e5e5']
+    )
+  }
+}
+
+export const TERM_THEMES: TermTheme[] = [...OWN_THEMES, ...EXTRA_THEMES, BASIC]
 
 export const DEFAULT_TERM_THEME = 'catppuccin-mocha'
 

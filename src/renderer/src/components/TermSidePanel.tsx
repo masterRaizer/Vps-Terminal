@@ -150,40 +150,60 @@ function ThemePreview({ t }: { t: TermTheme }) {
 
 function ThemesPanel() {
   const { termTheme, setTermTheme, fontSize, setFontSize, termFont, setTermFont } = useSessions()
+  const [fontOpen, setFontOpen] = useState(true)
+  const [sizeDraft, setSizeDraft] = useState(String(fontSize))
+  useEffect(() => setSizeDraft(String(fontSize)), [fontSize])
+  const dark = TERM_THEMES.filter((t) => !t.light)
+  const light = TERM_THEMES.filter((t) => t.light)
+  const item = (t: TermTheme) => (
+    <button key={t.id} className={`theme-item ${termTheme === t.id ? 'active' : ''}`} onClick={() => setTermTheme(t.id)} aria-pressed={termTheme === t.id}>
+      <ThemePreview t={t} />
+      <span className="theme-text">
+        <span className="theme-name">{t.name}</span>
+        <span className="theme-note">{t.note}</span>
+      </span>
+    </button>
+  )
   return (
     <>
-      <h3 className="sp-heading first">Шрифт</h3>
-      <div className="font-list">
-        {TERM_FONTS.map((f) => (
-          <button key={f.id} className={`font-item ${termFont === f.id ? 'active' : ''}`} onClick={() => setTermFont(f.id)} style={{ fontFamily: f.stack }}>
-            <span>{f.name}</span>
-            <small>{f.note}</small>
-          </button>
-        ))}
-      </div>
-      <div className="sp-font">
-        <span>Размер</span>
-        <span className="toolbar-spacer" />
-        <button className="icon-btn" onClick={() => setFontSize(fontSize - 1)} title="Меньше">
-          <IconMinus size={16} />
-        </button>
-        <span className="font-size">{fontSize}px</span>
-        <button className="icon-btn" onClick={() => setFontSize(fontSize + 1)} title="Больше">
-          <IconPlus size={16} />
-        </button>
-      </div>
-      <h3 className="sp-heading">Темы</h3>
-      <div className="theme-list">
-        {TERM_THEMES.map((t) => (
-          <button key={t.id} className={`theme-item ${termTheme === t.id ? 'active' : ''}`} onClick={() => setTermTheme(t.id)}>
-            <ThemePreview t={t} />
-            <span className="theme-text">
-              <span className="theme-name">{t.name}</span>
-              <span className="theme-note">{t.note}</span>
-            </span>
-          </button>
-        ))}
-      </div>
+      <button className="sp-fold" onClick={() => setFontOpen((o) => !o)} aria-expanded={fontOpen}>
+        <span>Шрифт</span>
+        <IconChevronDown size={16} style={{ transform: fontOpen ? 'rotate(180deg)' : undefined }} />
+      </button>
+      {fontOpen && (
+        <div className="font-box">
+          <select className="font-select" value={termFont} onChange={(e) => setTermFont(e.target.value)} aria-label="Шрифт терминала" style={{ fontFamily: TERM_FONTS.find((f) => f.id === termFont)?.stack }}>
+            {TERM_FONTS.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.name} — {f.note}
+              </option>
+            ))}
+          </select>
+          <div className="size-row">
+            <span>Размер текста</span>
+            <span className="toolbar-spacer" />
+            <button className="size-btn" onClick={() => setFontSize(fontSize - 1)} aria-label="Меньше">
+              <IconMinus size={16} />
+            </button>
+            <input
+              className="size-input"
+              value={sizeDraft}
+              inputMode="numeric"
+              aria-label="Размер текста"
+              onChange={(e) => setSizeDraft(e.target.value.replace(/\D/g, '').slice(0, 2))}
+              onBlur={() => setFontSize(Number(sizeDraft) || fontSize)}
+              onKeyDown={(e) => e.key === 'Enter' && setFontSize(Number(sizeDraft) || fontSize)}
+            />
+            <button className="size-btn" onClick={() => setFontSize(fontSize + 1)} aria-label="Больше">
+              <IconPlus size={16} />
+            </button>
+          </div>
+        </div>
+      )}
+      <h3 className="sp-heading">Тёмные темы</h3>
+      <div className="theme-list">{dark.map(item)}</div>
+      <h3 className="sp-heading">Светлые темы</h3>
+      <div className="theme-list">{light.map(item)}</div>
     </>
   )
 }

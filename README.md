@@ -89,7 +89,7 @@ Trust-on-first-use: новый ключ сервера подтверждает�
 - Хранилище: левое меню (Хосты, Ключи, Проброс портов, Сниппеты, Известные хосты, Журнал), строка поиска/подключения (`ssh user@host -p 22`, Ctrl+K), сетки карточек, редактор в выезжающей правой панели.
 - Сессия: терминал во всё окно + правая панель (поиск Ctrl+Shift+F, действия, сниппеты, история, темы и размер шрифта).
 - SFTP: две панели — локальная и удалённая.
-- Палитра интерфейса — тёмно-синяя (`#151a2b` / `#1d2134` / карточки `#282d41`, акцент `#1d8cf8`); 8 тем терминала: Catppuccin Mocha (по умолчанию, MIT), Navy Green, Navy Classic, Paper, Ember, Glacier, Phosphor, Cinder. Шрифт по умолчанию — встроенный Source Code Pro 14px (OFL), выбор Cascadia Mono / JetBrains Mono / Consolas; история прокрутки 40 000 строк.
+- Палитра интерфейса — тёмно-синяя (`#151a2b` / `#1d2134` / карточки `#282d41`, акцент `#1d8cf8`); 35 тем терминала, разделённых на тёмные и светлые: свои (Navy Green, Navy Classic, Paper, Ember, Glacier, Phosphor, Cinder), Catppuccin Mocha (по умолчанию) и открытые схемы из [iTerm2-Color-Schemes](https://github.com/mbadolato/iTerm2-Color-Schemes) (MIT): Kanagawa, Flexoki, Everforest, Solarized, Dracula, Monokai, Nord, Gruvbox, Material, Homebrew, Grass, Man Page, Novel, Ocean, Pro, Red Sands, Apple Classic, Basic. Шрифт по умолчанию — встроенный Source Code Pro 14px (OFL), выбор Cascadia Mono / JetBrains Mono / Consolas; история прокрутки 40 000 строк.
 - Редактор хоста: адрес с цветной плиткой, название, группа, теги, режим Backspace (^? / ^H), порт, учётные данные (пароль / SSH-агент; ключ — шаг 3), проброс агента, переменные окружения, тема терминала для хоста, заметки. Изменения сохраняются автоматически.
 
 ## Дорожная карта

@@ -707,3 +707,13 @@ textarea.notes::placeholder { color: var(--faint); }
 .sync-head h2 { margin: 2px 0 6px; font-size: 17px; }
 .sync-head p { margin: 0; color: var(--muted); line-height: 1.5; }
 .hint.attribution a { color: #7dbbff; }
+.sp-fold { display: flex; align-items: center; justify-content: space-between; width: 100%; height: 44px; padding: 0 4px; border: 0; background: none; font-weight: 700; color: var(--muted); }
+.sp-fold:hover { color: var(--text); }
+.font-box { display: flex; flex-direction: column; gap: 10px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+.font-select { height: 46px; padding: 0 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--input); color: var(--text); font-size: 14px; outline: 0; }
+.font-select:focus { border-color: var(--green); }
+.size-row { display: flex; align-items: center; gap: 6px; font-weight: 600; color: var(--muted); }
+.size-btn { display: grid; place-items: center; width: 40px; height: 40px; border: 0; border-radius: 9px; background: var(--card); color: var(--text); }
+.size-btn:hover { background: var(--card-hover); }
+.size-input { width: 56px; height: 40px; border: 1px solid var(--line); border-radius: 9px; background: none; text-align: center; font: 600 14px var(--sans); color: var(--text); outline: 0; user-select: text; }
+.size-input:focus { border-color: var(--green); }
