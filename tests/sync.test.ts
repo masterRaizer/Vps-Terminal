@@ -132,3 +132,18 @@ describe('merge rules', () => {
     expect(normalizeSyncUrl('http://127.0.0.1:8787')).toBe('http://127.0.0.1:8787')
   })
 })
+
+describe('describeFetchError', () => {
+  it('explains the cause behind "fetch failed"', async () => {
+    const { describeFetchError } = await import('../src/main/sync/service')
+    const { createServer } = await import('node:net')
+    const srv = createServer()
+    await new Promise<void>((r) => srv.listen(0, '127.0.0.1', r))
+    const closedPort = (srv.address() as { port: number }).port
+    await new Promise((r) => srv.close(r))
+    const refused = await fetch(`http://127.0.0.1:${closedPort}/`).catch((e) => e)
+    expect(describeFetchError(refused)).toMatch(/ECONNREFUSED/)
+    const nx = await fetch('http://no-such-host.invalid/').catch((e) => e)
+    expect(describeFetchError(nx)).toMatch(/ENOTFOUND|EAI_AGAIN/)
+  })
+})

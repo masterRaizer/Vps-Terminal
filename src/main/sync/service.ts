@@ -82,7 +82,7 @@ export class SyncService {
         redirect: 'error'
       })
     } catch (e) {
-      throw new Error(`Сервер синхронизации недоступен: ${(e as Error).message}`)
+      throw new Error(`Сервер синхронизации недоступен: ${describeFetchError(e)}`)
     }
     const json = (await res.json().catch(() => ({}))) as Record<string, unknown>
     if (res.status === 401) throw new Error('Сервер отклонил токен синхронизации')
@@ -204,4 +204,28 @@ export class SyncService {
       this.emit()
     }
   }
+}
+
+/** Node's fetch says only "fetch failed"; the real reason is in `cause`. */
+export function describeFetchError(e: unknown): string {
+  const err = e as Error & { cause?: { code?: string; message?: string } }
+  if (err?.name === 'TimeoutError' || err?.name === 'AbortError') return 'нет ответа за 30 с (порт закрыт по пути или сервер выключен)'
+  const code = err?.cause?.code ?? ''
+  const map: Record<string, string> = {
+    ENOTFOUND: 'домен не найден (проверьте DNS-запись)',
+    EAI_AGAIN: 'не удалось получить адрес домена (DNS)',
+    ECONNREFUSED: 'соединение отклонено: на этом порту ничего не слушает',
+    ECONNRESET: 'соединение сброшено (VPN/прокси или файрвол по пути)',
+    ETIMEDOUT: 'нет ответа (порт закрыт файрволом или трафик идёт через VPN на этот же сервер)',
+    UND_ERR_CONNECT_TIMEOUT: 'нет ответа (порт закрыт файрволом или трафик идёт через VPN на этот же сервер)',
+    EHOSTUNREACH: 'хост недоступен',
+    ENETUNREACH: 'нет сети',
+    CERT_HAS_EXPIRED: 'сертификат сервера просрочен',
+    ERR_TLS_CERT_ALTNAME_INVALID: 'сертификат выдан на другой домен',
+    DEPTH_ZERO_SELF_SIGNED_CERT: 'самоподписанный сертификат',
+    UNABLE_TO_VERIFY_LEAF_SIGNATURE: 'не удалось проверить сертификат'
+  }
+  if (map[code]) return `${map[code]} [${code}]`
+  const inner = err?.cause?.message
+  return inner ? `${err.message}: ${inner}` : (err?.message ?? String(e))
 }
