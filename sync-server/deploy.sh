@@ -11,12 +11,14 @@ command -v docker >/dev/null || { echo "Docker не установлен: curl -
 docker compose version >/dev/null 2>&1 || { echo "Нужен docker compose v2"; exit 1; }
 
 port_busy() { ss -ltnH "( sport = :$1 )" 2>/dev/null | grep -q .; }
+HTTPS_PORT=443
 if [ "$MODE" = auto ]; then
   if ! port_busy 80 && ! port_busy 443; then MODE=caddy
-  elif command -v nginx >/dev/null; then MODE=nginx
+  elif systemctl is-active --quiet nginx 2>/dev/null; then MODE=nginx
+  elif ! port_busy 80 && ! port_busy 8443; then MODE=caddy; HTTPS_PORT=8443   # 443 is taken (e.g. Xray Reality)
   else MODE=local; fi
 fi
-echo "Режим: $MODE"
+echo "Режим: $MODE (HTTPS-порт $HTTPS_PORT)"
 
 mkdir -p data && chown 1000:1000 data && chmod 700 data
 TOKEN=""
@@ -24,8 +26,10 @@ if [ ! -f .env ]; then
   TOKEN="$(head -c 48 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 48)"
   HASH="$(printf %s "$TOKEN" | sha256sum | cut -d' ' -f1)"
   umask 077
-  printf 'SYNC_TOKEN_SHA256=%s\nSYNC_DOMAIN=%s\n' "$HASH" "$DOMAIN" > .env
+  printf 'SYNC_TOKEN_SHA256=%s\nSYNC_DOMAIN=%s\nHTTPS_PORT=%s\n' "$HASH" "$DOMAIN" "$HTTPS_PORT" > .env
 fi
+HTTPS_PORT="$(grep -E '^HTTPS_PORT=' .env | cut -d= -f2 || echo 443)"
+SUFFIX=""; [ "${HTTPS_PORT:-443}" = 443 ] || SUFFIX=":$HTTPS_PORT"
 
 case "$MODE" in
   caddy) docker compose --profile caddy up -d --build ;;
@@ -46,7 +50,7 @@ if [ -n "$TOKEN" ]; then
   echo "================================================================"
   echo " Токен для приложения (показывается один раз, сохраните его):"
   echo "   $TOKEN"
-  echo " Адрес: https://$DOMAIN"
+  echo " Адрес: https://$DOMAIN$SUFFIX"
   echo "================================================================"
 else
   echo "Токен уже был создан раньше (.env существует). Новый: удалите .env и запустите снова."
