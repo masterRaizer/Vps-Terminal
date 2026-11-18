@@ -44,10 +44,15 @@ jobs:
       - name: Smoke test (packaged app starts and exits)
         shell: pwsh
         run: |
-          $exe = Get-ChildItem release/win-unpacked -Filter '*.exe' | Select-Object -First 1
+          $exe = Get-Item 'release/win-unpacked/Vps Terminal SSH.exe'
+          $out = Join-Path $env:RUNNER_TEMP 'smoke.txt'
+          $env:VTS_SMOKE_OUT = $out
           $p = Start-Process -FilePath $exe.FullName -ArgumentList '--smoke-test' -PassThru
-          if (-not $p.WaitForExit(60000)) { $p.Kill(); throw 'app did not exit' }
-          if ($p.ExitCode -ne 0) { throw "smoke test exit code $($p.ExitCode)" }
+          if (-not $p.WaitForExit(90000)) { $p.Kill(); throw 'app did not exit in 90 s' }
+          if (-not (Test-Path $out)) { throw "no smoke result (exit code $($p.ExitCode))" }
+          $result = Get-Content $out -Raw
+          Write-Host $result
+          if ($result.Trim() -ne 'smoke ok') { throw $result }
       - uses: actions/upload-artifact@v4
         with:
           name: vps-terminal-ssh-windows

@@ -1,5 +1,5 @@
 import { join } from 'node:path'
-import { existsSync } from 'node:fs'
+import { existsSync, writeFileSync } from 'node:fs'
 import { readFile, stat } from 'node:fs/promises'
 import { app, BrowserWindow, dialog, ipcMain, session, shell } from 'electron'
 import { IPC, type AppInfo, type ConnectRequest, type HostKeyPrompt } from '@shared/ipc'
@@ -377,20 +377,30 @@ function registerIpc(): void {
 
 app.setAppUserModelId('com.vpsterminal.ssh')
 
+/** GeoIP tables: extra resources when packaged, the repo's resources/ when run from source. */
+function geoipDir(): string {
+  if (app.isPackaged) return join(process.resourcesPath, 'geoip')
+  return [join(app.getAppPath(), 'resources', 'geoip'), join(__dirname, '..', '..', 'resources', 'geoip')].find((d) => existsSync(join(d, 'country-v4.bin'))) ?? ''
+}
+
 // CI smoke test: start main (DB, crypto, GeoIP), then exit with a status code.
+// GUI-subsystem .exe files have no usable stdout on Windows, so the result also goes to VTS_SMOKE_OUT.
+function smokeReport(line: string): void {
+  console.log(line)
+  if (process.env['VTS_SMOKE_OUT']) writeFileSync(process.env['VTS_SMOKE_OUT'], line)
+}
 if (process.argv.includes('--smoke-test')) {
   app.setPath('userData', join(app.getPath('temp'), `vts-smoke-${process.pid}`))
   void app.whenReady().then(async () => {
     try {
       const db = openDb(join(app.getPath('userData'), 'vault.db'))
-      const geoDir = app.isPackaged ? join(process.resourcesPath, 'geoip') : join(app.getAppPath(), 'resources', 'geoip')
-      const cc = new GeoIp(geoDir).countryOfIp('8.8.8.8')
+      const cc = new GeoIp(geoipDir()).countryOfIp('8.8.8.8')
       db.close()
       if (cc !== 'US') throw new Error(`GeoIP returned ${cc}`)
-      console.log('smoke ok')
+      smokeReport('smoke ok')
       app.exit(0)
     } catch (e) {
-      console.error('smoke failed:', e)
+      smokeReport(`smoke failed: ${(e as Error).stack ?? e}`)
       app.exit(1)
     }
   })
@@ -427,10 +437,7 @@ if (process.argv.includes('--smoke-test')) {
     const secrets = createSecretStore()
     const repo = new VaultRepo(db)
     catalog = new CatalogRepo(db)
-    const geoDir = app.isPackaged
-      ? join(process.resourcesPath, 'geoip')
-      : [join(app.getAppPath(), 'resources', 'geoip'), join(__dirname, '..', '..', 'resources', 'geoip')].find((d) => existsSync(join(d, 'country-v4.bin'))) ?? ''
-    const geo = new GeoIp(geoDir)
+    const geo = new GeoIp(geoipDir())
     const cipher = new DataKeyCipher(secrets)
     keys = new KeyService(catalog, repo, cipher, secrets)
     tools = new ToolsRepo(db)

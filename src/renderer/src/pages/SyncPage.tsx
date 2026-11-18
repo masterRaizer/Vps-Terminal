@@ -5,7 +5,7 @@ import { Tile } from '@/components/ui'
 import { IconInput } from '@/components/form'
 import { IconLock, IconRefresh, IconServer, IconShield } from '@/components/Icons'
 
-const DEFAULT_URL = 'https://sync.devkillmix.com'
+const DEFAULT_URL = 'https://sync.devkillmix.com:2053'
 
 export function SyncPage() {
   const status = useSync((s) => s.status)
