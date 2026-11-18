@@ -78,7 +78,7 @@ export function SplitButton({ icon, label, onClick, disabled, title, menu }: { i
         {icon}
         {label}
       </button>
-      <button className="split-more" disabled={disabled || !menu?.length} type="button" aria-label="Ещё" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+      <button className="split-more" disabled={disabled || !menu?.length} type="button" aria-label="Другие варианты" title="Другие варианты" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
         <IconChevronDown size={16} />
       </button>
       {open && menu && (

@@ -102,7 +102,15 @@ export function MoreMenu({ trigger, items }: { trigger: ReactNode; items: Array<
   const ref = useOutsideClose(open, () => setOpen(false))
   return (
     <div className="more" ref={ref}>
-      <button type="button" className="icon-btn" onClick={() => setOpen((o) => !o)} aria-label="Ещё" aria-expanded={open}>
+      <button
+        type="button"
+        className="icon-btn"
+        onClick={() => setOpen((o) => !o)}
+        aria-label="Действия (•••)"
+        title="Действия"
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >
         {trigger}
       </button>
       {open && (
