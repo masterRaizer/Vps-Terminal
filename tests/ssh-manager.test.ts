@@ -140,3 +140,26 @@ describe('silent server (TCP open, no SSH banner)', () => {
     expect(statuses.some((s) => s.status === 'closed')).toBe(false)
   })
 })
+
+describe('host key dialog vs. handshake timeout', () => {
+  it('does not time out while the user is deciding on the host key', async () => {
+    const statuses: SessionEvent[] = []
+    const mgr = new SshManager(
+      {
+        onData: () => {},
+        onStatus: (e) => statuses.push(e),
+        // The user takes 3x the timeout to click "trust"
+        verifyHostKey: () => new Promise((r) => setTimeout(() => r(true), 1200))
+      },
+      400
+    )
+    mgr.connect({ host: '127.0.0.1', port, username: 'tester', password: 's3cret', cols: 80, rows: 24 })
+    const t0 = Date.now()
+    while (!statuses.some((s) => s.status === 'ready' || s.status === 'error') && Date.now() - t0 < 8000) {
+      await new Promise((r) => setTimeout(r, 20))
+    }
+    expect(statuses.filter((s) => s.status === 'error')).toEqual([])
+    expect(statuses.some((s) => s.status === 'ready')).toBe(true)
+    mgr.disconnectAll()
+  })
+})

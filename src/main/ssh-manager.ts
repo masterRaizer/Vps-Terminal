@@ -3,6 +3,7 @@ import { Client, type ClientChannel } from 'ssh2'
 import type { ConnectRequest, SessionEvent } from '@shared/ipc'
 import { keyAlgorithm, sha256Fingerprint } from './fingerprint'
 import { humanizeSshError } from './ssh-errors'
+import { guardHandshake } from './handshake'
 
 export interface HostKeyInfo {
   sessionId: string
@@ -85,6 +86,9 @@ export class SshManager {
     })
 
     emit('connecting')
+    const guard = guardHandshake(client, this.readyTimeout, (key) =>
+      this.events.verifyHostKey({ sessionId, host: req.host, port: req.port, algorithm: keyAlgorithm(key), fingerprint: sha256Fingerprint(key) })
+    )
     try {
       client.connect({
         host: req.host,
@@ -96,19 +100,9 @@ export class SshManager {
         agent: req.agent || req.agentForward ? defaultAgent() : undefined,
         agentForward: Boolean(req.agentForward && defaultAgent()),
         tryKeyboard: Boolean(req.password),
-        readyTimeout: this.readyTimeout,
+        readyTimeout: guard.readyTimeout,
         keepaliveInterval: 15000,
-        hostVerifier: (key: Buffer, verify: (ok: boolean) => void) => {
-          this.events
-            .verifyHostKey({
-              sessionId,
-              host: req.host,
-              port: req.port,
-              algorithm: keyAlgorithm(key),
-              fingerprint: sha256Fingerprint(key)
-            })
-            .then(verify, () => verify(false))
-        }
+        hostVerifier: guard.hostVerifier
       })
       // Answer keyboard-interactive password prompts with the same password.
       if (req.password) {
@@ -118,6 +112,7 @@ export class SshManager {
         })
       }
     } catch (e) {
+      guard.cancel()
       emit('error', humanizeSshError(e))
       this.sessions.delete(sessionId)
     }

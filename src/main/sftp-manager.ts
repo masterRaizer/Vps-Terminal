@@ -7,6 +7,7 @@ import type { FileEntry, Listing, TransferEvent } from '@shared/files'
 import { keyAlgorithm, sha256Fingerprint } from './fingerprint'
 import { defaultAgent, type HostKeyInfo } from './ssh-manager'
 import { humanizeSshError } from './ssh-errors'
+import { guardHandshake } from './handshake'
 
 export interface SftpConnectRequest {
   host: string
@@ -75,6 +76,9 @@ export class SftpManager {
         if (this.sessions.delete(id)) this.onClosed(id)
         if (!settled) fail(new Error('Соединение закрыто'))
       })
+      const guard = guardHandshake(client, 20000, (key) =>
+        this.verifyHostKey({ sessionId: id, host: req.host, port: req.port, algorithm: keyAlgorithm(key), fingerprint: sha256Fingerprint(key) })
+      )
       client.connect({
         host: req.host,
         port: req.port,
@@ -84,11 +88,9 @@ export class SftpManager {
         passphrase: req.passphrase,
         agent: req.agent ? defaultAgent() : undefined,
         tryKeyboard: Boolean(req.password),
-        readyTimeout: 20000,
+        readyTimeout: guard.readyTimeout,
         keepaliveInterval: 15000,
-        hostVerifier: (key: Buffer, verify: (ok: boolean) => void) => {
-          this.verifyHostKey({ sessionId: id, host: req.host, port: req.port, algorithm: keyAlgorithm(key), fingerprint: sha256Fingerprint(key) }).then(verify, () => verify(false))
-        }
+        hostVerifier: guard.hostVerifier
       })
       if (req.password) {
         const pwd = req.password

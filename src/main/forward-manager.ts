@@ -4,6 +4,7 @@ import type { ForwardRule, TunnelStatus } from '@shared/vault'
 import { keyAlgorithm, sha256Fingerprint } from './fingerprint'
 import { defaultAgent, type HostKeyInfo } from './ssh-manager'
 import { humanizeSshError } from './ssh-errors'
+import { guardHandshake } from './handshake'
 
 export interface TunnelCredentials {
   host: string
@@ -83,6 +84,9 @@ export class ForwardManager {
       client.on('close', () => {
         if (this.tunnels.get(rule.id) === t && t.status.state !== 'stopped') fail(new Error('SSH-соединение туннеля закрыто'))
       })
+      const guard = guardHandshake(client, 20000, (key) =>
+        this.verifyHostKey({ sessionId: `fwd:${rule.id}`, host: cred.host, port: cred.port, algorithm: keyAlgorithm(key), fingerprint: sha256Fingerprint(key) })
+      )
       client.connect({
         host: cred.host,
         port: cred.port,
@@ -91,11 +95,9 @@ export class ForwardManager {
         privateKey: cred.privateKey,
         passphrase: cred.passphrase,
         agent: cred.agent ? defaultAgent() : undefined,
-        readyTimeout: 20000,
+        readyTimeout: guard.readyTimeout,
         keepaliveInterval: 15000,
-        hostVerifier: (key: Buffer, verify: (ok: boolean) => void) => {
-          this.verifyHostKey({ sessionId: `fwd:${rule.id}`, host: cred.host, port: cred.port, algorithm: keyAlgorithm(key), fingerprint: sha256Fingerprint(key) }).then(verify, () => verify(false))
-        }
+        hostVerifier: guard.hostVerifier
       })
     })
   }
