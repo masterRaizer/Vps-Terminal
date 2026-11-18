@@ -1,0 +1,49 @@
+appId: com.vpsterminal.ssh
+productName: Vps Terminal SSH
+copyright: Copyright © 2026 Vps Terminal SSH
+directories:
+  output: release
+  buildResources: build
+files:
+  - out/**
+  - package.json
+  # SQLite sources and build files are only needed to compile from source.
+  - '!**/node_modules/better-sqlite3/{deps,src,docs}/**'
+  - '!**/node_modules/better-sqlite3/binding.gyp'
+extraResources:
+  - from: resources/geoip
+    to: geoip
+    filter: ['*.bin']
+# Native modules ship N-API prebuilds (better-sqlite3, keytar): no rebuild against Electron headers.
+npmRebuild: false
+asarUnpack:
+  - '**/*.node'
+win:
+  icon: build/icon.png
+  files:
+    - '!**/node_modules/better-sqlite3/prebuilds/{darwin,linux,linuxmusl}-*.node'
+    - '!**/node_modules/better-sqlite3/prebuilds/win32-arm64.node'
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+  artifactName: ${productName}-${version}-${arch}-${target}.${ext}
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Vps Terminal SSH
+  artifactName: Vps-Terminal-SSH-Setup-${version}.${ext}
+portable:
+  artifactName: Vps-Terminal-SSH-${version}-portable.${ext}
+linux:
+  icon: build/icon.png
+  files:
+    - '!**/node_modules/better-sqlite3/prebuilds/{darwin,win32,linuxmusl}-*.node'
+    - '!**/node_modules/better-sqlite3/prebuilds/linux-arm64.node'
+  target: [dir]
+  category: Network
+publish: null

@@ -111,6 +111,7 @@ function createWindow(): void {
     minHeight: 520,
     title: APP_NAME,
     backgroundColor: '#151a2b',
+    icon: app.isPackaged ? undefined : join(__dirname, '../../build/icon.png'),
     show: false,
     autoHideMenuBar: true,
     titleBarStyle: process.platform === 'win32' ? 'hidden' : 'default',
@@ -375,10 +376,31 @@ function registerIpc(): void {
 }
 
 app.setAppUserModelId('com.vpsterminal.ssh')
+
+// CI smoke test: start main (DB, crypto, GeoIP), then exit with a status code.
+if (process.argv.includes('--smoke-test')) {
+  app.setPath('userData', join(app.getPath('temp'), `vts-smoke-${process.pid}`))
+  void app.whenReady().then(async () => {
+    try {
+      const db = openDb(join(app.getPath('userData'), 'vault.db'))
+      const geoDir = app.isPackaged ? join(process.resourcesPath, 'geoip') : join(app.getAppPath(), 'resources', 'geoip')
+      const cc = new GeoIp(geoDir).countryOfIp('8.8.8.8')
+      db.close()
+      if (cc !== 'US') throw new Error(`GeoIP returned ${cc}`)
+      console.log('smoke ok')
+      app.exit(0)
+    } catch (e) {
+      console.error('smoke failed:', e)
+      app.exit(1)
+    }
+  })
+}
 // Isolated profile for automated tests of the unpackaged app.
 if (!app.isPackaged && process.env['VTS_USER_DATA']) app.setPath('userData', process.env['VTS_USER_DATA'])
 
-if (!app.requestSingleInstanceLock()) {
+if (process.argv.includes('--smoke-test')) {
+  /* handled above */
+} else if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
   app.on('second-instance', () => {

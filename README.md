@@ -12,6 +12,14 @@ npm test           # интеграционные тесты SSH (встроен
 npm run typecheck
 ```
 
+## Сборка .exe
+
+```bash
+npm run dist:win     # release/Vps-Terminal-SSH-Setup-<версия>.exe и …-portable.exe
+```
+
+GitHub Actions (`.github/workflows/build.yml`): тесты на Ubuntu → сборка на windows-latest (установщик + portable, smoke-тест упакованного приложения) → артефакт `vps-terminal-ssh-windows`; при теге `v*` — релиз с .exe. Отдельно собирается и проверяется Docker-образ sync-server.
+
 ## Архитектура
 
 | Слой | Где | Что делает |
@@ -87,4 +95,4 @@ Trust-on-first-use: новый ключ сервера подтверждает�
 3. ✅ Ключи, профили доступа, Remnawave, флаги стран, SFTP, сплиты
 4. ✅ Сниппеты, проброс портов, известные хосты (TOFU)
 5. ✅ Шифрованный vault + сервер синхронизации на VPS (`sync-server/`)
-6. electron-builder + GitHub Actions → .exe
+6. ✅ electron-builder + GitHub Actions → установщик NSIS и portable .exe

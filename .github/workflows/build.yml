@@ -1,0 +1,83 @@
+name: build
+
+on:
+  push:
+    branches: [main, 'claude/**']
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
+  windows:
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npx electron-builder --win --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Smoke test (packaged app starts and exits)
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem release/win-unpacked -Filter '*.exe' | Select-Object -First 1
+          $p = Start-Process -FilePath $exe.FullName -ArgumentList '--smoke-test' -PassThru
+          if (-not $p.WaitForExit(60000)) { $p.Kill(); throw 'app did not exit' }
+          if ($p.ExitCode -ne 0) { throw "smoke test exit code $($p.ExitCode)" }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vps-terminal-ssh-windows
+          path: |
+            release/*.exe
+            release/*.blockmap
+          if-no-files-found: error
+
+  sync-server:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t vps-terminal-sync:ci sync-server
+      - name: Container answers /healthz
+        run: |
+          docker run -d --name sync -e SYNC_TOKEN_SHA256=$(printf ci-token-0123456789 | sha256sum | cut -d' ' -f1) -p 8787:8787 vps-terminal-sync:ci
+          for i in $(seq 1 20); do curl -fsS localhost:8787/healthz && exit 0; sleep 1; done
+          docker logs sync; exit 1
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [windows, sync-server]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: vps-terminal-ssh-windows
+          path: dist
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.exe
